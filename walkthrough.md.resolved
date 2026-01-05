@@ -1,0 +1,68 @@
+# Leo MVP - Walkthrough
+
+**Leo** is your Telegram-based second brain—a system to instantly capture text and links via Telegram and retrieve them later through a searchable web inbox.
+
+## 🚀 Usage Guide
+
+### 1. Capture (Telegram)
+- **Bot:** [@muntaleobot](https://t.me/muntaleobot)
+- **Text:** Send any message to save it instantly.
+- **URLs:** Send links; Leo automatically detects them.
+- **Confirmation:** Wait for the "Saved ✅" reply.
+- **Failures:** If saving fails, you'll see a "❌ Failed to save" message (rare).
+
+### 2. Retrieval (Web Inbox)
+- **URL:** https://leo-brain.vercel.app
+- **Login:** Enter password `LeoSecure2026!`
+- **Inbox:** View all your saved items, grouped by date (Today, Yesterday, This Week, etc.).
+- **URL Handling:** Links are clickable and open in a new tab.
+
+### 3. Actions
+- **Copy:** Click the clipboard icon to copy content to your clipboard.
+- **Archive:** Click the file box icon to move items to the archive. They are hidden from the inbox but not deleted.
+- **View Archive:** Link in the footer takes you to archived items.
+
+### 4. Search
+- **Input:** Type in the search bar at the top of the inbox.
+- **Filter:** Results update in real-time as you type.
+- **Scope:** Search covers both text content and URLs.
+- **Clear:** Click the 'X' to reset the view.
+
+---
+
+## 🛠️ Technical Overview
+
+### 1. Stack
+- **Frontend:** Next.js 14 (App Router), TypeScript, Tailwind CSS
+- **Database:** Neon PostgreSQL (Serverless)
+- **ORM:** Drizzle ORM
+- **Deployment:** Vercel
+
+### 2. Key Features
+- **Telegram Webhook:** Real-time message processing with rate limiting (10 msg/sec).
+- **Reliability:** 1 retry on database failures, structured logging for debugging.
+- **Authentication:** Password protection with HTTP-only cookies and JWT (Jose).
+- **Search:** Case-insensitive PostgreSQL ILIKE search with debouncing.
+- **Rate Limiting:** In-memory rate limiter to prevent abuse.
+
+### 3. Project Structure
+- [src/app/api/telegram/webhook/route.ts](file:///Users/maruthi/Desktop/MainDirectory/Leo/src/app/api/telegram/webhook/route.ts): Main entry point for Telegram messages.
+- [src/lib/db/schema.ts](file:///Users/maruthi/Desktop/MainDirectory/Leo/src/lib/db/schema.ts): Database schema definition.
+- [src/lib/auth.ts](file:///Users/maruthi/Desktop/MainDirectory/Leo/src/lib/auth.ts): Authentication logic (Session management).
+- [src/lib/logger.ts](file:///Users/maruthi/Desktop/MainDirectory/Leo/src/lib/logger.ts): Structured logging utility.
+- [src/components/ItemCard.tsx](file:///Users/maruthi/Desktop/MainDirectory/Leo/src/components/ItemCard.tsx): UI component for inbox items using Glassmorphism design.
+
+---
+
+## 🔒 Security
+- **Environment Variables:** All secrets (`DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `ADMIN_PASSWORD`, `SESSION_SECRET`) are stored in Vercel environment variables and encrypted.
+- **Auth:** Session tokens are signed/verified using `jose` and stored in secure, HTTP-only cookies.
+- **Middleware:** Next.js middleware protects `/inbox` and `/archive` routes.
+
+---
+
+## 🔮 Future Enhancements (Post-MVP)
+- **File Support:** Upload images and PDFs (Schema already supports this).
+- **Smart Search:** Vector embeddings for semantic search.
+- **User Accounts:** Multi-user support with individual logins.
+- **Export:** Export data to JSON/CSV.

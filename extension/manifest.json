@@ -1,0 +1,29 @@
+{
+    "manifest_version": 3,
+    "name": "Leo - Zero Friction Capture",
+    "version": "1.0",
+    "description": "Instant capture for your second brain.",
+    "permissions": [
+        "activeTab",
+        "scripting"
+    ],
+    "host_permissions": [
+        "http://localhost:3000/*",
+        "https://leo-brain.vercel.app/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "commands": {
+        "save_capture": {
+            "suggested_key": {
+                "default": "Ctrl+Shift+E",
+                "mac": "Command+Shift+E"
+            },
+            "description": "Save to Leo"
+        }
+    },
+    "action": {
+        "default_title": "Leo Capture"
+    }
+}
