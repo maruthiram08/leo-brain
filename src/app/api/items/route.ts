@@ -8,14 +8,37 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const showArchived = searchParams.get('archived') === 'true';
 
-        const result = await db
+        // 1. Fetch Working Set (Top 7 by importance, not archived)
+        // Only valid for non-archived view
+        let workingSet: typeof items.$inferSelect[] = [];
+        if (!showArchived) {
+            workingSet = await db
+                .select()
+                .from(items)
+                .where(eq(items.isArchived, false))
+                .orderBy(desc(items.importanceScore), desc(items.createdAt))
+                .limit(7);
+        }
+
+        const workingSetIds = workingSet.map(i => i.id);
+
+        // 2. Fetch Stream (Chronological, excluding Working Set)
+        let streamQuery = db
             .select()
             .from(items)
             .where(eq(items.isArchived, showArchived))
             .orderBy(desc(items.createdAt))
-            .limit(500);
+            .limit(100); // Pagination later
 
-        return NextResponse.json({ items: result });
+        const stream = await streamQuery;
+
+        // Filter out working set items from stream to avoid dupes in UI
+        const filteredStream = stream.filter(item => !workingSetIds.includes(item.id));
+
+        return NextResponse.json({
+            stream: filteredStream,
+            workingSet: workingSet
+        });
     } catch (error) {
         console.error('Failed to fetch items:', error);
         return NextResponse.json(

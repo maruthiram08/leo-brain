@@ -5,9 +5,10 @@ import { useState, useEffect } from 'react';
 interface SearchBarProps {
     onSearch: (query: string) => void;
     isSearching: boolean;
+    placeholder?: string;
 }
 
-export function SearchBar({ onSearch, isSearching }: SearchBarProps) {
+export function SearchBar({ onSearch, isSearching, placeholder = "Search your brain..." }: SearchBarProps) {
     const [query, setQuery] = useState('');
     const [debouncedQuery, setDebouncedQuery] = useState('');
 
@@ -46,7 +47,7 @@ export function SearchBar({ onSearch, isSearching }: SearchBarProps) {
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search your brain..."
+                placeholder={placeholder}
                 className="w-full pl-10 pr-10 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 transition-all"
             />
             {query && (

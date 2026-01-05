@@ -1,0 +1,42 @@
+🧠 Core Philosophy Shift
+We are pivoting from a "Second Brain/Inbox" (which implies work/organizing) to an "Ambient Memory Layer".
+
+Old Way: Save -> Organize -> Search.
+New Way: Save -> Forget -> Resurfacing.
+Key Promise: No admin work. No "inbox zero". No guilt.
+🛠️ Key Feature Changes (The "V1 Upgrade")
+We are adding exactly 3 mechanics to the existing MVP:
+
+The Working Set (Recently Relevant)
+A visually distinct "top layer" in the Stream.
+Shows ~7 items that are "active" in your brain right now.
+Driven by: Recent captures + Implicit signals (clicks, copies, views).
+Not manual: Users cannot "pin" or "clear" these.
+Recall Trigger (The "Aha" Moment)
+Search isn't just filtering anymore.
+It proactively suggests: "You've seen things like this before".
+Surfaces 2-3 items based on heuristics (keywords/context) before the standard results.
+Meaning Signal (The Invisible Brain)
+We track an invisible "importance score" for every item.
+Increases with: Views, copies, repeat captures.
+Decays with: Time.
+This score powers the Working Set ranking.
+🎨 UI/UX Overhaul
+Rename: "Inbox" is dead. It is now "The Stream".
+Visuals:
+Stream: Continuous flow, no hard pages, no item counts ("You have 34 items" is forbidden).
+Items: Look like "memory fragments" (minimal), not "cards" or "tasks". No checkboxes, no "mark as read".
+Search: Placeholder becomes "What are you thinking about?".
+Vibe: Peaceful. If you ignore it for 2 weeks, you shouldn't feel "behind".
+
+Database: Add importance_score and interaction tracking (last_viewed, copy_count).
+Logic: Implement the scoring algorithm (decay + interaction boosts).
+Frontend: Rebuild 
+InboxPage
+ into StreamPage with the new 2-section layout (Working Set + Timeline).
+Search API: Update to return "Recall" suggestions + standard matches.
+
+LeoExt2026SecureToken
+
+
+psql 'postgresql://neondb_owner:npg_eiJdw86hOaQz@ep-wild-resonance-a4afgf31-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'

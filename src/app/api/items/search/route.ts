@@ -14,7 +14,23 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ items: [] });
         }
 
-        const result = await db
+        // 1. Recall Logic: High importance items matching query
+        const recall = await db
+            .select()
+            .from(items)
+            .where(
+                and(
+                    eq(items.isArchived, false),
+                    ilike(items.content, `%${query}%`)
+                )
+            )
+            .orderBy(desc(items.importanceScore))
+            .limit(3);
+
+        const recallIds = recall.map(i => i.id);
+
+        // 2. Standard Results: Chronological
+        const results = await db
             .select()
             .from(items)
             .where(
@@ -26,7 +42,13 @@ export async function GET(request: NextRequest) {
             .orderBy(desc(items.createdAt))
             .limit(100);
 
-        return NextResponse.json({ items: result });
+        // Filter out recall items from standard results
+        const filteredResults = results.filter(item => !recallIds.includes(item.id));
+
+        return NextResponse.json({
+            results: filteredResults,
+            recall: recall.length > 0 && recall[0].importanceScore > 0 ? recall : [] // Only show recall if it has some score signal
+        });
     } catch (error) {
         logError({
             event: 'search_error',

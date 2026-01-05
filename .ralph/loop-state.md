@@ -267,6 +267,36 @@ Build Chrome Extension for zero-friction capture (v1.1)
 - Added `EXTENSION_TOKEN` to Vercel and deployed API
 - Created `extension/README.md`
 
+---
+
+# Leo V2: Database & Meaning Signal
+
+---
+iteration: 1
+status: active
+started_at: 2026-01-05T19:08:11+05:30
+max_iterations: 15
+---
+
+## Task
+Implement Database Schema for Importance Score and Interaction Tracking
+
+## Completion Criteria
+- [x] Add `importanceScore`, `viewCount`, `copyCount`, `lastViewedAt` to schema (src/lib/db/schema.ts)
+- [x] Implement `src/lib/scoring.ts` (updateImportance functionality)
+- [x] Create POST `/api/items/[id]/interaction` endpoint
+- [ ] Run database migration (`npx drizzle-kit push`) successfully
+- [ ] Verify interaction endpoint updates DB correctly
+- [ ] Backfill existing items with default scores (implied 0 by default)
+
+## Progress Log
+
+### Iteration 1
+- Updated `src/lib/db/schema.ts` with new columns
+- Created `src/lib/scoring.ts`
+- Created `src/app/api/items/[id]/interaction/route.ts`
+- Attempted migration but failed due to config issue
+
 ### Iteration 2
 - User installed and verified extension locally
 - Global shortcut works for selection capture

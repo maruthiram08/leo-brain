@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, boolean, timestamp, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, boolean, timestamp, jsonb, integer } from 'drizzle-orm/pg-core';
 
 export const items = pgTable('items', {
     id: uuid('id').primaryKey().defaultRandom(),
@@ -20,8 +20,16 @@ export const items = pgTable('items', {
         mimeType?: string;
     }>(),
 
+
     // State
     isArchived: boolean('is_archived').notNull().default(false),
+
+    // V2: Meaning Signals
+    importanceScore: integer('importance_score').notNull().default(0),
+    viewCount: integer('view_count').notNull().default(0),
+    copyCount: integer('copy_count').notNull().default(0),
+    lastViewedAt: timestamp('last_viewed_at', { withTimezone: true }),
+    lastRecallAt: timestamp('last_recall_at', { withTimezone: true }),
 
     // Timestamps
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

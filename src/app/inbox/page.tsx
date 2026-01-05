@@ -6,6 +6,7 @@ import { Item } from '@/lib/db/schema';
 import { groupItemsByDate } from '@/lib/utils';
 import { ItemCard } from '@/components/ItemCard';
 import { SearchBar } from '@/components/SearchBar';
+import { ViewToggle } from '@/components/ViewToggle';
 import Link from 'next/link';
 
 export default function InboxPage() {
@@ -21,7 +22,18 @@ export default function InboxPage() {
             const response = await fetch('/api/items');
             if (!response.ok) throw new Error('Failed to fetch');
             const data = await response.json();
-            setItems(data.items);
+
+            // Handle V2 API format
+            let allItems: Item[] = [];
+            if (data.items) {
+                allItems = data.items;
+            } else if (data.stream && data.workingSet) {
+                allItems = [...data.workingSet, ...data.stream];
+                // Sort by date for Classic Inbox view
+                allItems.sort((a, b) => new Date(b.createdAt as any).getTime() - new Date(a.createdAt as any).getTime());
+            }
+
+            setItems(allItems);
         } catch {
             setError('Failed to load items');
         } finally {
@@ -40,7 +52,10 @@ export default function InboxPage() {
             const response = await fetch(`/api/items/search?q=${encodeURIComponent(query)}`);
             if (!response.ok) throw new Error('Search failed');
             const data = await response.json();
-            setItems(data.items);
+
+            // Handle V2 search format if implemented, or legacy
+            const results = data.items || data.results || [];
+            setItems(results);
         } catch (err) {
             console.error(err);
             setError('Search failed');
@@ -65,15 +80,18 @@ export default function InboxPage() {
     const groupedItems = groupItemsByDate(items);
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        <div className="min-h-screen bg-slate-900">
             {/* Header */}
-            <header className="sticky top-0 z-10 bg-slate-900/80 backdrop-blur-xl border-b border-slate-700/50">
+            <header className="sticky top-0 z-10 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800">
                 <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-orange-500/20">
                             <span className="text-xl">🦁</span>
                         </div>
-                        <h1 className="text-xl font-bold text-white">Leo</h1>
+                        <h1 className="text-xl font-bold text-white hidden sm:block">Leo</h1>
+                        <div className="ml-4">
+                            <ViewToggle />
+                        </div>
                     </div>
                     <button
                         onClick={handleLogout}

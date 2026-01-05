@@ -39,3 +39,16 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.env*.local
+
+#docs
+Running Notes
+loop-state.md
+ralph-loops.md
+ralph-loop-state.md
+Leo.md
+LeoV2.md
+Leo-ExtensionChrome.md
+Stream UI v2.md
+walkthrough.md.resolved
+

@@ -10,13 +10,26 @@ interface ItemCardProps {
     onUnarchive?: () => void;
 }
 
-export function ItemCard({ item, onArchive, onUnarchive }: ItemCardProps) {
+export function ItemCard({ item, onArchive, onUnarchive, minimal = false }: ItemCardProps & { minimal?: boolean }) {
     const [copied, setCopied] = useState(false);
     const [updating, setUpdating] = useState(false);
+
+    const logInteraction = async (signal: 'view' | 'copy') => {
+        try {
+            await fetch(`/api/items/${item.id}/interaction`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ signal }),
+            });
+        } catch (e) {
+            console.error('Failed to log interaction', e);
+        }
+    };
 
     const handleCopy = async () => {
         await navigator.clipboard.writeText(item.content);
         setCopied(true);
+        logInteraction('copy');
         setTimeout(() => setCopied(false), 2000);
     };
 
@@ -56,33 +69,39 @@ export function ItemCard({ item, onArchive, onUnarchive }: ItemCardProps) {
 
     const isLink = isUrl(item.content);
 
+    // Minimal mode (Stream) vs Classic mode (Inbox)
+    const containerClasses = minimal
+        ? "group relative pl-4 transition-all" // No border, no background default
+        : "group bg-slate-800/30 hover:bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 transition-all";
+
     return (
-        <div className="group bg-slate-800/30 hover:bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 transition-all">
+        <div className={containerClasses}>
             {/* Content */}
-            <div className="mb-3">
+            <div className="mb-2">
                 {isLink ? (
                     <a
                         href={item.content}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-amber-400 hover:text-amber-300 hover:underline break-all transition-colors"
+                        onClick={() => logInteraction('view')}
+                        className={`break-all transition-colors ${minimal ? 'text-slate-300 hover:text-amber-400 font-medium' : 'text-amber-400 hover:text-amber-300 hover:underline'}`}
                     >
                         {item.content}
                     </a>
                 ) : (
-                    <p className="text-slate-200 whitespace-pre-wrap break-words">
+                    <p className={`whitespace-pre-wrap break-words ${minimal ? 'text-slate-300' : 'text-slate-200'}`}>
                         {item.content}
                     </p>
                 )}
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-between">
+            <div className={`flex items-center justify-between ${minimal ? 'opacity-0 group-hover:opacity-100 transition-opacity' : ''}`}>
                 <span className="text-xs text-slate-500">
                     {formatTimestamp(item.createdAt)}
                 </span>
 
-                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className={`flex items-center gap-2 ${minimal ? '' : 'opacity-0 group-hover:opacity-100 transition-opacity'}`}>
                     {/* Copy Button */}
                     <button
                         onClick={handleCopy}
@@ -101,7 +120,7 @@ export function ItemCard({ item, onArchive, onUnarchive }: ItemCardProps) {
                     </button>
 
                     {/* Unarchive Button */}
-                    {onUnarchive && (
+                    {onUnarchive && !minimal && (
                         <button
                             onClick={handleUnarchive}
                             disabled={updating}
@@ -114,8 +133,8 @@ export function ItemCard({ item, onArchive, onUnarchive }: ItemCardProps) {
                         </button>
                     )}
 
-                    {/* Archive Button */}
-                    {onArchive && (
+                    {/* Archive Button - Hidden in minimal mode */}
+                    {onArchive && !minimal && (
                         <button
                             onClick={handleArchive}
                             disabled={updating}
