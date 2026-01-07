@@ -1,4 +1,5 @@
-import { pgTable, uuid, text, boolean, timestamp, jsonb, integer } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, boolean, timestamp, jsonb, integer, vector, index } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const items = pgTable('items', {
     id: uuid('id').primaryKey().defaultRandom(),
@@ -31,10 +32,39 @@ export const items = pgTable('items', {
     lastViewedAt: timestamp('last_viewed_at', { withTimezone: true }),
     lastRecallAt: timestamp('last_recall_at', { withTimezone: true }),
 
+    // V3: Semantic Search
+    embedding: vector('embedding', { dimensions: 1536 }), // OpenAI text-embedding-3-small
+
+    // V4: URL Enrichment (Background Understanding)
+    enrichedTitle: text('enriched_title'),
+    enrichedDescription: text('enriched_description'), // max 240 chars
+    enrichmentContentType: text('enrichment_content_type'), // article | video | tweet | doc | unknown
+    sourceDomain: text('source_domain'),
+    faviconUrl: text('favicon_url'),
+    enrichmentStatus: text('enrichment_status').default('pending'), // pending | success | failed
+    enrichmentAttemptedAt: timestamp('enrichment_attempted_at', { withTimezone: true }),
+
+    // V4.1: AI-generated summary and tags for better recall
+    aiSummary: text('ai_summary'), // Short summary from Kimi/Gemini (max 200 chars)
+    aiTags: text('ai_tags'), // Comma-separated tags for recall matching
+
+    // V5: Ambient Memory Layer (Earned Recall)
+    decayScore: integer('decay_score').notNull().default(0), // Exponential decay based on time since last access
+    dismissCount: integer('dismiss_count').notNull().default(0), // Times dismissed during recall
+    sourceUrl: text('source_url'), // Where the event was captured from
+    sourcePageTitle: text('source_page_title'), // Page title at capture time
+    lastRecallShownAt: timestamp('last_recall_shown_at', { withTimezone: true }), // When shown in recall overlay
+
     // Timestamps
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+    // Vector index for similarity search (HNSW)
+    embeddingIndex: index('embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
+
+    // Trigram index for fuzzy match (GIN)
+    contentTrigramIndex: index('content_trgm_idx').using('gin', sql`${table.content} gin_trgm_ops`),
+}));
 
 // Type inference
 export type Item = typeof items.$inferSelect;

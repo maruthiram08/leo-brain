@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { items } from '@/lib/db/schema';
 import { logInfo, logError, logWarn } from '@/lib/logger';
+import { generateEmbedding } from '@/lib/embeddings';
 
 const EXTENSION_TOKEN = process.env.EXTENSION_TOKEN;
 
@@ -56,11 +57,34 @@ export async function POST(request: NextRequest) {
         // BUT since we don't have multi-user yet, we can just use "extension-user".
         const userId = "extension-user";
 
-        await db.insert(items).values({
+        // Generate embedding (asynchronously or check await?)
+        // For MVP, await it. Speed is less critical than consistency.
+        let embedding: number[] | null = null;
+        try {
+            // Context strategy: Content + Type
+            const context = `${contentToSave} ${dbContentType === 'url' ? 'URL' : 'Note'}`;
+            embedding = await generateEmbedding(context);
+        } catch (e) {
+            console.error('Failed to generate embedding during capture:', e);
+            // Proceed without embedding (will be null)
+        }
+
+        const [inserted] = await db.insert(items).values({
             telegramUserId: userId, // We're using this field for generic user ID for now
             contentType: dbContentType,
             content: contentToSave,
-        });
+            embedding,
+        }).returning({ id: items.id });
+
+        // Fire-and-forget URL enrichment (non-blocking per v2 spec)
+        if (dbContentType === 'url' && inserted?.id) {
+            const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://leo-brain.vercel.app';
+            fetch(`${baseUrl}/api/enrich-url`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ itemId: inserted.id, url: contentToSave })
+            }).catch(() => { }); // Silent failure - enrichment is optional
+        }
 
         logInfo({
             event: 'capture_saved',
@@ -69,7 +93,7 @@ export async function POST(request: NextRequest) {
             duration: Date.now() - startTime
         });
 
-        return NextResponse.json({ success: true });
+        return NextResponse.json({ success: true, id: inserted?.id });
 
     } catch (error) {
         logError({
