@@ -1,0 +1,771 @@
+Below is a **single, copy-paste ready Markdown product + tech spec** that consolidates **everything we discussed so far** — mental model, architecture, partial keyword handling, ranking, UX, MVP scope, and guardrails.
+
+You can hand this **directly to engineers, search infra, or an AI coding agent**.
+
+---
+
+# Robust Search System Specification
+
+**(Second Brain / Knowledge Capture Product)**
+
+---
+
+## 1. Product Goal
+
+Build a **robust, low-friction search system** that allows users to retrieve saved content even when they:
+
+* Remember only fragments
+* Misspell words
+* Recall ideas instead of exact text
+* Forget when or where something was saved
+
+### North-Star Outcome
+
+> A tired user can find something they half-remember from weeks ago in under **5 seconds**, without thinking about how search works.
+
+---
+
+## 2. Core Principles
+
+1. **High Recall > Perfect Precision**
+2. **Fragments are First-Class Queries**
+3. **Zero Organization Tax**
+4. **Search feels helpful, not “smart”**
+5. **Exact intent always beats semantic guesses**
+
+---
+
+## 3. Mental Model
+
+Search is **not one engine**, but a **pipeline of cooperating engines**:
+
+```
+User Query
+   ├─ Keyword Engine (exact / partial recall)
+   ├─ Semantic Engine (meaning)
+   └─ Context Engine (time, source, behavior)
+```
+
+Results are **merged and re-ranked**, not returned independently.
+
+---
+
+## 4. Data Ingestion & Indexing
+
+### 4.1 Stored Fields (per item)
+
+**Raw**
+
+* Original content (HTML / text / OCR)
+* URL or source identifier
+
+**Cleaned**
+
+* Boilerplate-removed text
+* Normalized casing, punctuation
+
+**Metadata**
+
+* Source (web, reddit, screenshot, pdf, etc.)
+* Timestamp (created, ingested)
+* Device (mobile / desktop)
+
+**Derived (mandatory)**
+
+* 2–3 line summary
+* Auto-topics (lightweight, non-taxonomic)
+* Embedding vector
+* Activity signals (open count, time spent)
+
+> ⚠️ Never index only raw text.
+> Always index **interpretations**.
+
+---
+
+## 5. Index Types (Minimum Viable)
+
+| Index             | Purpose                  |
+| ----------------- | ------------------------ |
+| Full-text (BM25)  | Exact & partial keywords |
+| Prefix index      | Partial word recall      |
+| Edge n-gram index | Mid-word recall          |
+| Vector index      | Semantic meaning         |
+| Metadata index    | Time, source filters     |
+| Activity index    | Personal relevance       |
+
+---
+
+## 6. Query Understanding (Intent Heuristics)
+
+Lightweight classification **before searching**:
+
+| Pattern                      | Interpreted As   |
+| ---------------------------- | ---------------- |
+| 1–2 words                    | Lookup           |
+| Sentence / question          | Semantic         |
+| “recent”, “last week”        | Temporal         |
+| “pdf”, “tweet”, “screenshot” | Source filter    |
+| Known project term           | Contextual boost |
+
+Intent modifies **index weighting**, not results inclusion.
+
+---
+
+## 7. Partial Keyword Support (Critical)
+
+Partial keyword ≠ fuzzy ≠ semantic
+They fix **different recall failures**.
+
+### 7.1 Prefix Search (Primary)
+
+**Solves**
+
+* `infla` → inflation
+* `proj` → project
+
+**Rules**
+
+* Min length: 2 chars
+* Applied to:
+
+  * Titles
+  * Headings
+  * First 200 chars
+  * Auto-extracted entities
+
+**Ranking**
+
+* Prefix > fuzzy > semantic
+* Early-position matches boosted
+
+---
+
+### 7.2 Edge N-grams (Carefully Scoped)
+
+**Solves**
+
+* `gress` → progress
+* `ation` → inflation
+
+**Guardrails**
+
+* Edge n-grams only (not full n-grams)
+* Applied only to:
+
+  * Titles
+  * Headings
+  * OCR text
+* Min length: 3
+* Max length: 10
+
+⚠️ Do **not** apply to full body text.
+
+---
+
+### 7.3 Fuzzy Search (Last Resort)
+
+**Solves**
+
+* Typos
+* Misspellings
+
+**Rules**
+
+* Edit distance ≤ 1 (≤2 only for long tokens)
+* Disabled for queries < 4 chars
+* Score penalty vs prefix/exact
+
+---
+
+### 7.4 Semantic Backstop
+
+Used when:
+
+* No strong prefix hits
+* Query is fragmentary phrase
+
+Rules:
+
+* Semantic search reranks only
+* Boost docs that contain partial token
+
+---
+
+## 8. Query Execution Order
+
+```
+If query length < 3:
+  → Prefix search only
+Else:
+  → Prefix
+  → Edge n-gram
+  → Fuzzy
+  → Semantic rerank
+```
+
+Results are merged → deduped → ranked.
+
+---
+
+## 9. Ranking Formula (Initial Weights)
+
+```
+Final Score =
+  (0.35 × Semantic similarity)
++ (0.25 × Keyword relevance)
++ (0.20 × Recency proximity)
++ (0.10 × Source affinity)
++ (0.10 × Personal signals)
+```
+
+### Personal Signals
+
+* Previously opened
+* Time spent
+* Highlighted / clipped
+
+Cap contribution per signal to avoid dominance.
+
+---
+
+## 10. UX Behavior (Very Important)
+
+### 10.1 Instant Feedback
+
+* Results appear on first keystroke
+* Ranking refines silently
+
+### 10.2 Result Cards (Not Documents)
+
+Each result shows:
+
+* Matching snippet (highlighted)
+* Why it matched
+* Source + timestamp
+* 1-line summary
+
+### 10.3 Inline Interaction
+
+* Open inline
+* Expand preview
+* Copy / send / link without navigation
+
+---
+
+## 11. Filters That Don’t Feel Like Filters
+
+Instead of static checkboxes:
+
+* Generate **contextual chips** from query
+
+Examples:
+
+* “Screenshots”
+* “Last 7 days”
+* “Reddit”
+* “Project Alpha”
+
+Tap to refine, never mandatory.
+
+---
+
+## 12. MVP Scope
+
+### Phase 1 (Week 1–2)
+
+* Full-text + prefix search
+* Vector embeddings
+* Hybrid ranking
+* Recency boost
+* Result cards
+
+### Phase 2 (Week 3)
+
+* OCR ingestion
+* Query intent heuristics
+* Source-aware boosting
+
+### Phase 3 (Week 4)
+
+* Inline preview
+* “Why this result” explanation
+
+---
+
+## 13. Explicit Anti-Scope (Do NOT Build Yet)
+
+❌ Manual tagging
+❌ Folder hierarchies
+❌ Boolean queries
+❌ Saved searches
+❌ Knowledge graphs
+
+These add management overhead and break the “second brain” promise.
+
+---
+
+## 14. Quality Bar Tests
+
+### Partial Recall Test
+
+> Typing the **first 3 letters** of something saved should surface it in **top 3** results.
+
+### Semantic Recall Test
+
+> Describing the *idea* (not words) finds the right item in <5 seconds.
+
+### Fatigue Test
+
+> User should not need to rephrase query more than once.
+
+---
+
+## 15. Failure Modes to Watch
+
+* Semantic overriding exact intent
+* N-grams applied too broadly
+* Fuzzy search dominating results
+* Empty states during typing
+* Over-exposed filters
+
+---
+
+## 16. Definition of “Robust”
+
+Search is considered **robust** when:
+
+* Users stop organizing manually
+* Users trust fragments
+* Users don’t think about search mechanics
+* Users say:
+
+  > “I don’t remember how I found it, but it worked.”
+
+---
+
+Below is a **copy-paste ready Markdown spec** for **Search Evaluation Test Sets**, designed to *systematically validate* everything we discussed: partial keywords, fuzzy recall, semantic recall, recency bias, and UX trust.
+
+This is written so you can:
+
+* Hand it to engineers
+* Use it for regression testing
+* Plug it into automated evaluation later
+
+---
+
+# Search Evaluation Test Sets
+
+**(Second Brain / Knowledge Capture System)**
+
+---
+
+## 1. Purpose of Evaluation
+
+Search quality is **not binary** (“works / doesn’t work”).
+
+We evaluate search on **human recall realism**:
+
+* Fragmented memory
+* Partial keywords
+* Vague ideas
+* Temporal uncertainty
+* Fatigue and impatience
+
+> The goal is to measure **trust**, not just relevance.
+
+---
+
+## 2. Ground Rules for All Tests
+
+* All tests assume:
+
+  * No manual tags
+  * No folders
+  * No user pre-filtering
+* Results are considered **successful** if:
+
+  * Correct item appears in **Top 3**
+  * User does **not** need to reformulate more than once
+* Measure:
+
+  * Rank position
+  * Time to first click
+  * Query reformulations
+
+---
+
+## 3. Test Dataset Construction (Baseline)
+
+Create a corpus of **~300 items** with:
+
+### Content Mix
+
+* 30% Web articles
+* 20% Tweets / short posts
+* 20% Screenshots (OCR-heavy)
+* 15% PDFs
+* 10% Notes / thoughts
+* 5% Audio / video transcripts
+
+### Time Distribution
+
+* 40% last 7 days
+* 30% last 30 days
+* 20% last 90 days
+* 10% >90 days
+
+---
+
+## 4. Test Set Categories
+
+---
+
+## A. Partial Keyword Recall Tests (Critical)
+
+### A1. Prefix Recall
+
+**User Memory**
+
+> “I remember the word starting with `infl…`”
+
+**Query**
+
+```
+infl
+```
+
+**Expected**
+
+* Inflation-related item in Top 3
+* Prefix match boosted over semantic-only items
+
+**Failure Signals**
+
+* Semantic results dominate
+* Correct item appears below rank 5
+
+---
+
+### A2. Mid-Word Recall (Edge N-gram)
+
+**User Memory**
+
+> “Something ending with `gress`”
+
+**Query**
+
+```
+gress
+```
+
+**Expected**
+
+* “progress” / “congress” related items surface
+* Title/headings favored over body matches
+
+**Failure Signals**
+
+* Random noise
+* OCR text dominating incorrectly
+
+---
+
+### A3. Truncated Phrase
+
+**User Memory**
+
+> “It was something like `fed dot…`”
+
+**Query**
+
+```
+fed dot
+```
+
+**Expected**
+
+* Content mentioning “Fed dot plot”
+* Partial phrase treated as exact intent
+
+---
+
+## B. Fuzzy Recall Tests
+
+### B1. Simple Typo
+
+**User Memory**
+
+> “Inflation but I typed it wrong”
+
+**Query**
+
+```
+infltion
+```
+
+**Expected**
+
+* Inflation content in Top 3
+* Fuzzy match penalized but not blocked
+
+**Failure Signals**
+
+* No relevant results
+* Overly aggressive fuzzy matches
+
+---
+
+### B2. Phonetic Misspelling
+
+**Query**
+
+```
+jerom powel
+```
+
+**Expected**
+
+* Jerome Powell related content
+* Name entity recognition helps recovery
+
+---
+
+## C. Semantic Recall Tests
+
+### C1. Idea-Based Recall
+
+**User Memory**
+
+> “That thing about rates staying high longer”
+
+**Query**
+
+```
+rates staying high longer
+```
+
+**Expected**
+
+* Relevant macro / Fed content
+* Semantic results boosted
+* Keyword absence tolerated
+
+---
+
+### C2. Question-Style Query
+
+**Query**
+
+```
+why did markets fall after cpi
+```
+
+**Expected**
+
+* Analysis explaining CPI → market reaction
+* Older but relevant content allowed
+
+---
+
+## D. Temporal Recall Tests
+
+### D1. Vague Time Reference
+
+**User Memory**
+
+> “I saw it last week”
+
+**Query**
+
+```
+last week inflation
+```
+
+**Expected**
+
+* Temporal boost applied
+* Last 7–10 day items ranked higher
+
+---
+
+### D2. Recency vs Relevance Conflict
+
+**Query**
+
+```
+fed meeting summary
+```
+
+**Expected**
+
+* Most recent Fed meeting summary
+* Older summaries penalized unless heavily interacted with
+
+---
+
+## E. Source-Constrained Recall
+
+### E1. Screenshot Recall
+
+**User Memory**
+
+> “It was a screenshot, not an article”
+
+**Query**
+
+```
+screenshot inflation chart
+```
+
+**Expected**
+
+* OCR-derived results
+* Screenshot source boosted
+
+---
+
+### E2. Platform Recall
+
+**Query**
+
+```
+reddit post about layoffs
+```
+
+**Expected**
+
+* Reddit-sourced content boosted
+* Cross-platform noise suppressed
+
+---
+
+## F. Personal Context Tests (Trust Builder)
+
+### F1. Previously Opened Content
+
+**User Memory**
+
+> “I opened it a few times”
+
+**Query**
+
+```
+inflation chart
+```
+
+**Expected**
+
+* Previously opened item ranked above similar new ones
+
+---
+
+### F2. Highlighted / Interacted Content
+
+**Query**
+
+```
+important risk
+```
+
+**Expected**
+
+* Highlighted notes boosted
+* Passive content ranked lower
+
+---
+
+## G. Fatigue & UX Tests
+
+### G1. One-Word Query Under Fatigue
+
+**Query**
+
+```
+fed
+```
+
+**Expected**
+
+* High-confidence, diverse results
+* No empty state
+* No need to type more
+
+---
+
+### G2. Progressive Typing Stability
+
+**Typing Sequence**
+
+```
+i → in → infl → infla
+```
+
+**Expected**
+
+* Results refine smoothly
+* No sudden disappearance of correct item
+
+---
+
+## 5. Scoring & Metrics
+
+### Per-Test Metrics
+
+* Rank of correct item
+* Time to first click
+* Query reformulations
+* Scroll depth
+
+### Aggregate Metrics
+
+* % tests with correct result in Top 3
+* Avg reformulations per task
+* Avg time to success
+
+---
+
+## 6. Pass / Fail Criteria
+
+### MVP Bar
+
+* ≥70% tests pass (Top 3)
+* Avg reformulations ≤1.5
+
+### Strong Search
+
+* ≥85% tests pass
+* Avg reformulations ≤1
+* Median time to success <5s
+
+### Category-Defining
+
+* ≥90% tests pass
+* Users stop using manual organization
+* Qualitative feedback:
+
+  > “I don’t remember how, but it finds it”
+
+---
+
+## 7. Regression Policy
+
+* Run full test suite:
+
+  * Before any ranking change
+  * After index schema change
+  * After embedding model updates
+* Lock partial-keyword tests as **non-regressible**
+
+---
+
+## 8. Final Truth Test
+
+Ask users post-search:
+
+> “Did you find what you were thinking of, or did you settle?”
+
+If they *settled*, search failed — even if metrics passed.
+
+---
+
+

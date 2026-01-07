@@ -1,0 +1,153 @@
+Issue 2: Recently Relevant cards look too “card-like” ❌
+
+Right now they:
+
+Have strong borders
+
+Look tappable
+
+Feel like “items to check”
+
+They visually compete with the stream.
+
+This risks turning Recently Relevant into:
+
+“Top priorities”
+
+Which you explicitly do not want.
+
+Fix
+
+Make Recently Relevant feel lighter than the stream, not heavier.
+
+Concrete tweaks:
+
+Reduce border contrast by ~40%
+
+Slight background blur or translucency
+
+Smaller font size than stream items
+
+Remove any “dot” or marker that implies status
+
+The mental model should be:
+
+“These are floating thoughts, not tasks”
+
+Issue 3: URLs are too raw and dominant ❌
+
+Right now the first thing users see is:
+
+https://www.reddit.com/r/ClaudeAI/...
+
+
+This pulls the brain into:
+
+Technical parsing
+
+“I should clean this”
+
+“This looks messy”
+
+Which invites organization urges.
+
+Fix (without adding previews or AI)
+
+De-emphasize the URL string itself.
+
+Example:
+
+Show domain + title emphasis
+
+URL only on hover or secondary line
+
+Truncate aggressively
+
+Good pattern:
+
+Spent 2000 hours coding with LLMs
+reddit.com · 5 Jan
+
+
+Still raw. Still honest.
+But less mentally noisy.
+
+Issue 4: “Recently Relevant” has no explanation — and that’s risky ⚠️
+
+Silence is good.
+But total opacity here may confuse first-time users.
+
+You don’t need onboarding — but you need one line of framing.
+
+Fix (very subtle)
+
+Add a single line under the header:
+
+Things that seem to matter recently.
+
+No “why”, no logic, no tooltip.
+
+This anchors trust without inviting control.
+
+Micro-tweaks that would make this feel exceptional
+
+These are optional but powerful.
+
+1. Soften timestamps
+
+Instead of:
+
+5 Jan
+
+Prefer:
+
+Earlier this week
+
+A few days ago
+
+Exact time increases archival thinking.
+
+2. Reduce vertical density slightly
+
+More whitespace = less urgency.
+
+Inbox apps compress space.
+Memory systems breathe.
+
+3. Remove any “selection dots” or indicators
+
+Those yellow dots currently look like:
+
+Status markers
+
+Unread indicators
+
+Even if they aren’t — users will project meaning.
+
+If something looks like state, it creates obligation.
+
+Final verdict (PM honest)
+Is this aligned with expectations?
+
+Yes — directionally and philosophically.
+
+Is it category-defining yet?
+
+Almost — but only if you fix the semantic + visual guilt leaks now.
+
+The golden gut-check (do this yourself)
+
+Ask:
+
+“If I didn’t open Leo for two weeks, would this screen make me feel behind?”
+
+Right now, the answer is:
+
+A little.
+
+After the fixes above, the answer becomes:
+
+“No. Nothing broke.”
+
+That’s the bar.
+

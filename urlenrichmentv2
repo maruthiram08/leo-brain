@@ -1,0 +1,275 @@
+
+---
+
+## 1. Correct Architecture (Non-Negotiable)
+
+**Rule #1:**
+
+> URL metadata must **never** block capture.
+
+So the architecture must be **async + decoupled**.
+
+### Correct flow
+
+```
+User saves URL
+   ↓
+Store raw URL immediately
+   ↓
+Return control to user (<300ms)
+   ↓
+Queue background job
+   ↓
+Fetch metadata asynchronously
+   ↓
+Update event record
+```
+
+If metadata fails → **silently ignore**.
+
+---
+
+## 2. What Metadata You Actually Need (Minimal, Useful)
+
+You do **not** need full scraping or AI summarization.
+
+### Fetch ONLY these (v1)
+
+**Primary**
+
+* `title`
+* `description`
+* `favicon`
+* `source_domain`
+* `content_type` (article / video / tweet / doc / unknown)
+
+**Optional (safe)**
+
+* `og:title`
+* `og:description`
+* `og:image`
+
+### Do NOT fetch
+
+* Full page content
+* Authenticated pages
+* Comments
+* Read time
+* “Insights”
+
+Remember:
+
+> This is for **recognition**, not intelligence.
+
+---
+
+## 3. Background URL Enrichment Flow (Step-by-Step)
+
+### Step 1: Capture
+
+```json
+{
+  "event_id": "uuid",
+  "type": "link",
+  "url": "https://medium.com/...",
+  "enrichment_status": "pending"
+}
+```
+
+### Step 2: Queue a job
+
+Use:
+
+* BullMQ / RabbitMQ / SQS / simple cron worker
+
+Payload:
+
+```json
+{
+  "event_id": "uuid",
+  "url": "https://medium.com/..."
+}
+```
+
+---
+
+### Step 3: Fetch HTML (lightweight)
+
+Rules:
+
+* Timeout ≤ 3s
+* Follow redirects ≤ 3
+* User-Agent: browser-like
+* No JS execution
+
+---
+
+### Step 4: Parse metadata
+
+Priority order:
+
+1. `og:title`
+2. `<title>`
+3. Fallback → domain name
+
+Same for description.
+
+---
+
+### Step 5: Store result
+
+```json
+{
+  "enriched_title": "...",
+  "enriched_description": "...",
+  "favicon_url": "...",
+  "content_type": "article",
+  "enrichment_status": "success"
+}
+```
+
+If anything fails:
+
+```json
+{ "enrichment_status": "failed" }
+```
+
+No retries unless cheap.
+
+---
+
+## 4. Minimal Node.js Implementation (Works Today)
+
+### Install deps
+
+```bash
+npm install node-fetch cheerio
+```
+
+### Metadata fetcher (simple + safe)
+
+```js
+import fetch from "node-fetch";
+import cheerio from "cheerio";
+import { URL } from "url";
+
+export async function enrichUrl(url) {
+  try {
+    const res = await fetch(url, {
+      timeout: 3000,
+      redirect: "follow",
+      headers: {
+        "User-Agent": "Mozilla/5.0"
+      }
+    });
+
+    const html = await res.text();
+    const $ = cheerio.load(html);
+
+    const title =
+      $('meta[property="og:title"]').attr("content") ||
+      $("title").text() ||
+      null;
+
+    const description =
+      $('meta[property="og:description"]').attr("content") ||
+      $('meta[name="description"]').attr("content") ||
+      null;
+
+    const parsedUrl = new URL(url);
+
+    return {
+      enriched_title: title?.trim(),
+      enriched_description: description?.trim()?.slice(0, 240),
+      source_domain: parsedUrl.hostname,
+      favicon_url: `${parsedUrl.origin}/favicon.ico`,
+      enrichment_status: "success"
+    };
+  } catch (err) {
+    return { enrichment_status: "failed" };
+  }
+}
+```
+
+This is **enough** for v1.
+
+---
+
+## 5. Content Type Detection (Cheap Heuristics)
+
+Add a helper:
+
+```js
+function detectContentType(url) {
+  if (url.includes("youtube.com") || url.includes("youtu.be")) return "video";
+  if (url.includes("twitter.com") || url.includes("x.com")) return "tweet";
+  if (url.includes("medium.com") || url.includes("substack.com")) return "article";
+  return "unknown";
+}
+```
+
+Don’t over-engineer this.
+
+---
+
+## 6. Where This Metadata Is Used (Important)
+
+### ✅ Allowed
+
+* Stream display
+* Recall display
+* Recognition (“Oh yeah, this link”)
+
+### ❌ Not allowed
+
+* Ranking
+* Insight generation
+* Feed creation
+* “You saved this because…”
+
+Metadata ≠ intelligence.
+
+---
+
+## 7. Privacy & Trust Guardrails (Critical)
+
+You MUST enforce:
+
+* No JS execution (no Puppeteer initially)
+* No cookies
+* No auth headers
+* No crawling beyond first page
+* Respect robots.txt
+
+If metadata fails → **that’s fine**.
+
+---
+
+## 8. Common Mistakes to Avoid
+
+❌ Fetching metadata synchronously
+❌ Showing “loading metadata…”
+❌ Asking users to fix metadata
+❌ Over-summarizing
+❌ Treating metadata as ground truth
+
+Your system should feel:
+
+> “Quietly helpful, never eager.”
+
+---
+
+## 9. Internal Rule (Write This Down)
+
+> **Metadata exists to reduce recognition friction, not to increase understanding.**
+
+If someone proposes:
+
+* AI summaries
+* Auto-tagging
+* Topic extraction
+
+You say **no** (for now).
+
+---
+

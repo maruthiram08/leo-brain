@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Item } from '@/lib/db/schema';
-import { formatTimestamp, isUrl } from '@/lib/utils';
+import { formatTimestamp, isUrl, getRelativeTime } from '@/lib/utils';
 
 interface ItemCardProps {
     item: Item;
@@ -68,41 +68,102 @@ export function ItemCard({ item, onArchive, onUnarchive, minimal = false }: Item
     };
 
     const isLink = isUrl(item.content);
+    let domain = '';
+    try {
+        if (isLink) domain = new URL(item.content).hostname.replace(/^www\./, '');
+    } catch {
+        // ignore
+    }
 
-    // Minimal mode (Stream) vs Classic mode (Inbox)
-    const containerClasses = minimal
-        ? "group relative pl-4 transition-all" // No border, no background default
-        : "group bg-slate-800/30 hover:bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 transition-all";
+    // Minimal mode = ambient, no cards
+    // Classic mode = inbox with visible actions
+    if (minimal) {
+        return (
+            <div className="group py-2 transition-colors">
+                {isLink ? (
+                    <div>
+                        <a
+                            href={item.content}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => logInteraction('view')}
+                            className="text-slate-300 hover:text-slate-100 text-sm transition-colors"
+                        >
+                            {item.enrichedTitle || domain}
+                        </a>
+                        {item.enrichedDescription && (
+                            <p className="text-xs text-slate-500 mt-1 line-clamp-1">
+                                {item.enrichedDescription}
+                            </p>
+                        )}
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-slate-600">{domain}</span>
+                            <span className="text-xs text-slate-700">·</span>
+                            <span className="text-xs text-slate-600">{getRelativeTime(item.createdAt)}</span>
+                        </div>
+                    </div>
+                ) : (
+                    <div>
+                        <p className="text-slate-300 text-sm whitespace-pre-wrap break-words line-clamp-3">
+                            {item.content}
+                        </p>
+                        <span className="text-xs text-slate-600 mt-1 block">
+                            {getRelativeTime(item.createdAt)}
+                        </span>
+                    </div>
+                )}
 
+                {/* Hover-only copy action */}
+                <button
+                    onClick={handleCopy}
+                    className="absolute right-0 top-2 opacity-0 group-hover:opacity-100 p-1.5 text-slate-500 hover:text-slate-300 transition-all text-xs"
+                    title="Copy"
+                >
+                    {copied ? '✓' : '⎘'}
+                </button>
+            </div>
+        );
+    }
+
+    // Classic card mode for inbox
     return (
-        <div className={containerClasses}>
-            {/* Content */}
+        <div className="group bg-slate-800/30 hover:bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 transition-all">
             <div className="mb-2">
                 {isLink ? (
-                    <a
-                        href={item.content}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => logInteraction('view')}
-                        className={`break-all transition-colors ${minimal ? 'text-slate-300 hover:text-amber-400 font-medium' : 'text-amber-400 hover:text-amber-300 hover:underline'}`}
-                    >
-                        {item.content}
-                    </a>
+                    <div>
+                        <a
+                            href={item.content}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => logInteraction('view')}
+                            className="text-amber-400 hover:text-amber-300 hover:underline transition-colors"
+                        >
+                            {item.enrichedTitle || item.content}
+                        </a>
+                        {item.enrichedDescription && (
+                            <p className="text-sm text-slate-400 mt-1 line-clamp-2">
+                                {item.enrichedDescription}
+                            </p>
+                        )}
+                        {domain && (
+                            <span className="inline-block text-xs text-slate-500 mt-1">
+                                {domain}
+                            </span>
+                        )}
+                    </div>
                 ) : (
-                    <p className={`whitespace-pre-wrap break-words ${minimal ? 'text-slate-300' : 'text-slate-200'}`}>
+                    <p className="whitespace-pre-wrap break-words text-slate-200">
                         {item.content}
                     </p>
                 )}
             </div>
 
-            {/* Footer */}
-            <div className={`flex items-center justify-between ${minimal ? 'opacity-0 group-hover:opacity-100 transition-opacity' : ''}`}>
+            <div className="flex items-center justify-between">
                 <span className="text-xs text-slate-500">
                     {formatTimestamp(item.createdAt)}
                 </span>
 
-                <div className={`flex items-center gap-2 ${minimal ? '' : 'opacity-0 group-hover:opacity-100 transition-opacity'}`}>
-                    {/* Copy Button */}
+                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                         onClick={handleCopy}
                         className="p-2 rounded-lg bg-slate-700/50 hover:bg-slate-700 text-slate-400 hover:text-white transition-all"
@@ -119,8 +180,7 @@ export function ItemCard({ item, onArchive, onUnarchive, minimal = false }: Item
                         )}
                     </button>
 
-                    {/* Unarchive Button */}
-                    {onUnarchive && !minimal && (
+                    {onUnarchive && (
                         <button
                             onClick={handleUnarchive}
                             disabled={updating}
@@ -133,8 +193,7 @@ export function ItemCard({ item, onArchive, onUnarchive, minimal = false }: Item
                         </button>
                     )}
 
-                    {/* Archive Button - Hidden in minimal mode */}
-                    {onArchive && !minimal && (
+                    {onArchive && (
                         <button
                             onClick={handleArchive}
                             disabled={updating}
@@ -148,13 +207,7 @@ export function ItemCard({ item, onArchive, onUnarchive, minimal = false }: Item
                     )}
                 </div>
             </div>
-
-            {/* Toast */}
-            {copied && (
-                <div className="fixed bottom-4 right-4 bg-slate-800 border border-slate-700 text-white px-4 py-2 rounded-lg shadow-lg animate-fade-in z-50">
-                    Copied!
-                </div>
-            )}
         </div>
     );
 }
+

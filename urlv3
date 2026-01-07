@@ -1,0 +1,270 @@
+
+Reddit (and a few other sites) **intentionally break naive metadata fetching**.
+So let’s be precise about **why it fails** and **how to fix it safely** without violating your product principles.
+
+---
+
+## Why Reddit URLs Don’t Enrich (Root Causes)
+
+### 1. Reddit serves **different HTML to bots**
+
+* `node-fetch` / `axios` often get:
+
+  * empty `<title>`
+  * generic “Reddit” title
+  * no meta description
+* OpenGraph tags are **missing or gated**
+
+### 2. Reddit aggressively rate-limits & blocks
+
+* Especially from:
+
+  * default user agents
+  * server IPs
+* You may get:
+
+  * 429
+  * truncated HTML
+  * interstitials
+
+### 3. Modern Reddit relies on **JS hydration**
+
+* Post title, content, subreddit name are often **not in raw HTML**
+* So `cheerio` sees almost nothing useful
+
+This also affects:
+
+* X / Twitter
+* Instagram
+* LinkedIn
+* Some Medium variants
+* Paywalled sites
+
+---
+
+## Correct Mental Model (Important)
+
+> **Not all URLs are enrichable via raw HTML.
+> You need domain-specific fallbacks.**
+
+This is not “special-casing” — it’s **infrastructure reality**.
+
+---
+
+## The RIGHT Way to Enrich Reddit URLs (3 Safe Options)
+
+### ✅ OPTION 1 (RECOMMENDED): Use Reddit’s JSON endpoint
+
+Reddit has an **official, undocumented-but-stable** JSON view.
+
+#### How it works
+
+Append `.json` to most Reddit URLs.
+
+Example:
+
+```
+https://www.reddit.com/r/ObsidianMD/comments/1eglzk7/where_are_the_second_brain_apps_that_dont_feel/
+```
+
+Becomes:
+
+```
+https://www.reddit.com/r/ObsidianMD/comments/1eglzk7/where_are_the_second_brain_apps_that_dont_feel/.json
+```
+
+#### What you get
+
+Clean JSON with:
+
+* post title
+* subreddit
+* author
+* selftext
+* score
+* permalink
+
+#### Minimal implementation
+
+```js
+async function enrichReddit(url) {
+  try {
+    const jsonUrl = url.endsWith(".json") ? url : `${url}.json`;
+
+    const res = await fetch(jsonUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0"
+      }
+    });
+
+    const data = await res.json();
+    const post = data[0]?.data?.children?.[0]?.data;
+
+    if (!post) throw new Error("No post data");
+
+    return {
+      enriched_title: post.title,
+      enriched_description: post.selftext?.slice(0, 240) || null,
+      source_domain: "reddit.com",
+      content_type: "reddit_post",
+      enrichment_status: "success"
+    };
+  } catch {
+    return { enrichment_status: "failed" };
+  }
+}
+```
+
+#### Why this is good
+
+* No scraping
+* No JS execution
+* Stable
+* Fast
+* Reddit-friendly
+
+---
+
+### ✅ OPTION 2: Use `old.reddit.com` HTML (Fallback)
+
+Old Reddit still renders server-side HTML.
+
+#### Strategy
+
+Replace:
+
+```
+www.reddit.com
+```
+
+with:
+
+```
+old.reddit.com
+```
+
+Then scrape `<title>`.
+
+#### Example
+
+```js
+const oldUrl = url.replace("www.reddit.com", "old.reddit.com");
+```
+
+This often yields:
+
+```
+<title>Where are the second brain apps that don’t feel like a second job?</title>
+```
+
+#### Use when
+
+* `.json` fails
+* You only need the title
+
+---
+
+### ⚠️ OPTION 3: Headless Browser (NOT for MVP)
+
+Using Puppeteer / Playwright will work, but:
+
+* Expensive
+* Slow
+* Raises privacy concerns
+* Overkill for recognition metadata
+
+**Do not use this unless absolutely required.**
+
+---
+
+## Recommended Enrichment Strategy (Robust + Simple)
+
+### Domain-aware enrichment pipeline
+
+```txt
+On URL capture
+  ↓
+Detect domain
+  ↓
+If reddit.com → use JSON
+Else if twitter.com → use oEmbed
+Else → try HTML metadata
+  ↓
+If all fail → fallback to domain name
+```
+
+---
+
+## Fixing “Other URLs” That Fail (Common Cases)
+
+### Twitter / X
+
+* HTML metadata often blocked
+* Use **oEmbed**:
+
+```
+https://publish.twitter.com/oembed?url=...
+```
+
+### Instagram
+
+* HTML blocked
+* Use oEmbed (limited fields)
+* Or fallback to:
+
+  * “Instagram post · saved X days ago”
+
+### LinkedIn
+
+* Very restrictive
+* Best fallback: title + domain only
+
+### Paywalled sites
+
+* Metadata may be present but misleading
+* Don’t retry aggressively
+
+---
+
+## Guardrail (Very Important)
+
+> **Enrichment is best-effort.
+> Failure is not an error state.**
+
+If Reddit enrichment fails:
+
+* Do NOT prompt the user
+* Do NOT retry aggressively
+* Do NOT mark as broken
+
+Just fall back gracefully.
+
+---
+
+## How This Fits Your Product Philosophy
+
+You are NOT promising:
+
+* Perfect understanding
+* Complete metadata
+* Guaranteed previews
+
+You ARE promising:
+
+* Zero capture friction
+* Better recognition *when possible*
+* Silence when not
+
+This approach aligns perfectly.
+
+---
+
+## Internal Rule You Should Add to Spec
+
+```md
+Enrichment must be domain-aware.
+Generic HTML scraping is not sufficient.
+Failure must degrade gracefully to URL-level recognition.
+```
+
+---

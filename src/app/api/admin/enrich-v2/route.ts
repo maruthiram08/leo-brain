@@ -138,43 +138,100 @@ export async function POST(request: NextRequest) {
     }
 }
 
-function generateFallbackTags(url: string, title: string | null, description: string | null) {
+/**
+ * Generate semantic tags from content when AI fails
+ * Comprehensive keyword extraction for finance, tech, AI, design, etc.
+ */
+function generateFallbackTags(
+    url: string,
+    title: string | null,
+    description: string | null
+): { topics: string[], intent: string[], domain: string } {
     const topics: string[] = [];
     const intent: string[] = [];
     let domain = 'unknown';
 
     const lower = url.toLowerCase();
-    const combined = `${(title || '').toLowerCase()} ${(description || '').toLowerCase()}`;
+    const titleLower = (title || '').toLowerCase();
+    const descLower = (description || '').toLowerCase();
+    const combined = `${titleLower} ${descLower}`;
 
-    // Domain
-    if (lower.includes('github') || lower.includes('dev.to') || combined.includes('programming')) domain = 'tech';
-    else if (lower.includes('youtube') || lower.includes('vimeo')) domain = 'entertainment';
-    else if (lower.includes('twitter') || lower.includes('linkedin')) domain = 'business';
-    else if (lower.includes('reddit')) domain = 'lifestyle';
-    else if (combined.includes('invest') || combined.includes('finance')) domain = 'finance';
+    // === COMPREHENSIVE KEYWORD GROUPS ===
+    const keywordGroups: Record<string, string[]> = {
+        tech: ['react', 'nextjs', 'javascript', 'typescript', 'python', 'node', 'api', 'database',
+            'frontend', 'backend', 'web', 'mobile', 'docker', 'kubernetes', 'aws', 'cloud',
+            'vue', 'angular', 'svelte', 'tailwind', 'vercel', 'deploy', 'code', 'programming',
+            'developer', 'software', 'algorithm', 'data structure', 'rust', 'golang'],
 
-    // Intent
-    if (combined.includes('tutorial') || combined.includes('how to')) intent.push('tutorial');
-    if (combined.includes('documentation') || combined.includes('docs')) intent.push('reference');
-    if (combined.includes('discussion') || lower.includes('reddit')) intent.push('discussion');
+        ai: ['ai', 'machine learning', 'ml', 'deep learning', 'neural', 'gpt', 'llm', 'chatgpt',
+            'claude', 'gemini', 'openai', 'anthropic', 'model', 'training', 'inference', 'agent'],
+
+        finance: ['trading', 'algorithmic', 'hedge fund', 'investment', 'stock', 'crypto', 'bitcoin',
+            'finance', 'market', 'investor', 'portfolio', 'quant', 'quantitative', 'forex',
+            'options', 'derivatives', 'fintech', 'banking', 'wealth', 'strategy'],
+
+        design: ['design', 'ui', 'ux', 'figma', 'sketch', 'prototype', 'wireframe', 'visual',
+            'typography', 'color', 'layout', 'interface', 'user experience'],
+
+        business: ['startup', 'entrepreneur', 'marketing', 'growth', 'product', 'saas', 'b2b',
+            'sales', 'revenue', 'strategy', 'leadership', 'management', 'founder']
+    };
+
+    // Match keywords and set domain
+    for (const [domainName, keywords] of Object.entries(keywordGroups)) {
+        for (const keyword of keywords) {
+            if (combined.includes(keyword)) {
+                topics.push(keyword.replace(/\s+/g, '-'));
+                if (domain === 'unknown') domain = domainName;
+            }
+        }
+    }
+
+    // === URL-BASED TOPICS ===
+    if (lower.includes('github')) { topics.push('code', 'github'); domain = domain === 'unknown' ? 'tech' : domain; }
+    if (lower.includes('youtube')) { topics.push('video'); domain = domain === 'unknown' ? 'entertainment' : domain; }
+    if (lower.includes('reddit')) { topics.push('community', 'discussion'); }
+    if (lower.includes('twitter') || lower.includes('x.com')) { topics.push('social'); }
+    if (lower.includes('medium')) { topics.push('blog', 'article'); domain = domain === 'unknown' ? 'tech' : domain; }
+
+    // === INTENT DETECTION ===
+    if (combined.includes('tutorial') || combined.includes('how to') || combined.includes('guide') ||
+        combined.includes('learn') || combined.includes('explains') || combined.includes('build')) {
+        intent.push('tutorial');
+    }
+    if (combined.includes('documentation') || combined.includes('docs') || combined.includes('reference')) {
+        intent.push('reference');
+    }
+    if (combined.includes('discussion') || lower.includes('reddit')) {
+        intent.push('discussion');
+    }
+    if (combined.includes('news') || combined.includes('announce')) {
+        intent.push('news');
+    }
     if (intent.length === 0) intent.push('reference');
 
-    // Topics from URL/title
-    const techKeywords = ['react', 'nextjs', 'javascript', 'typescript', 'python', 'api', 'frontend', 'backend', 'web', 'ai', 'docker'];
-    for (const kw of techKeywords) {
-        if (combined.includes(kw)) topics.push(kw);
-    }
-    if (lower.includes('github')) topics.push('code');
-    if (lower.includes('youtube')) topics.push('video');
-    if (lower.includes('reddit')) topics.push('community');
+    // === EXTRACT MEANINGFUL WORDS FROM TITLE ===
+    const stopWords = new Set(['this', 'that', 'with', 'from', 'have', 'been', 'were', 'will',
+        'about', 'their', 'would', 'could', 'should', 'there', 'where', 'which', 'while',
+        'being', 'https', 'http', 'www', 'they', 'them', 'these', 'those', 'what', 'when',
+        'actually', 'really', 'literally', 'every', 'some', 'just', 'your', 'into', 'work']);
 
-    // Words from title
-    const words = (title || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
-        .filter(w => w.length > 4 && w.length < 15);
-    topics.push(...words.slice(0, 3));
+    const words = (title || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 3 && w.length < 15 && !stopWords.has(w));
+
+    for (const word of words.slice(0, 5)) {
+        if (!topics.includes(word) && !topics.some(t => t.includes(word))) {
+            topics.push(word);
+        }
+    }
+
+    const uniqueTopics = [...new Set(topics)].slice(0, 8);
 
     return {
-        topics: [...new Set(topics)].slice(0, 5) || ['general'],
+        topics: uniqueTopics.length > 0 ? uniqueTopics : ['general'],
         intent: intent.slice(0, 2),
         domain
     };

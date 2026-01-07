@@ -11,7 +11,7 @@ import { SearchBar } from '@/components/SearchBar';
 export default function StreamPage() {
     const [streamItems, setStreamItems] = useState<Item[]>([]);
     const [workingSet, setWorkingSet] = useState<Item[]>([]);
-    const [recallItems, setRecallItems] = useState<Item[]>([]); // New recall state
+    const [recallItems, setRecallItems] = useState<Item[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [searching, setSearching] = useState(false);
@@ -29,7 +29,6 @@ export default function StreamPage() {
                 setWorkingSet(data.workingSet);
                 setRecallItems([]);
             } else if (data.items) {
-                // Fallback for legacy format if any
                 setStreamItems(data.items);
                 setWorkingSet([]);
             }
@@ -52,14 +51,12 @@ export default function StreamPage() {
             if (!response.ok) throw new Error('Search failed');
             const data = await response.json();
 
-            // Search temporarily replaces stream view
-            // V3 might treat search results differently (recall vs stream filters)
             const results = data.items || data.results || [];
             const recall = data.recall || [];
 
             setStreamItems(results);
-            setWorkingSet([]); // Hide working set during search filtering
-            setRecallItems(recall); // Set recall items
+            setWorkingSet([]);
+            setRecallItems(recall);
         } catch (err) {
             console.error(err);
             setError('Search failed');
@@ -78,22 +75,19 @@ export default function StreamPage() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-900 text-slate-200">
-            {/* Header */}
-            <header className="sticky top-0 z-20 bg-slate-900/90 backdrop-blur-xl border-b border-slate-800/50">
-                <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-orange-500/20 opacity-80">
-                            <span className="text-xl">🦁</span>
+        <div className="min-h-screen bg-[#0f172a] text-slate-300">
+            {/* Minimal Header */}
+            <header className="sticky top-0 z-20 bg-[#0f172a]/95 backdrop-blur-sm border-b border-slate-800/30">
+                <div className="max-w-2xl mx-auto px-6 py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="w-8 h-8 opacity-80">
+                            <img src="/leo-light.png" alt="Leo Logo" className="w-full h-full object-contain" />
                         </div>
-                        <h1 className="text-xl font-bold text-white hidden sm:block">Leo</h1>
-                        <div className="ml-4">
-                            <ViewToggle />
-                        </div>
+                        <ViewToggle />
                     </div>
                     <button
                         onClick={handleLogout}
-                        className="text-sm text-slate-500 hover:text-slate-300 transition-colors"
+                        className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
                     >
                         Logout
                     </button>
@@ -101,59 +95,70 @@ export default function StreamPage() {
             </header>
 
             {/* Content */}
-            <main className="max-w-3xl mx-auto px-4 py-8">
-                <div className="mb-12">
+            <main className="max-w-2xl mx-auto px-6 py-10">
+                {/* Recall Prompt - subtle, optional feel */}
+                <div className="mb-16">
                     <SearchBar
                         onSearch={handleSearch}
                         isSearching={searching}
-                        placeholder="What are you thinking about?"
+                        placeholder="Recall something…"
                     />
                 </div>
 
                 {loading ? (
-                    <div className="flex items-center justify-center py-20 opacity-50">
-                        <div className="w-8 h-8 border-2 border-slate-500 border-t-transparent rounded-full animate-spin"></div>
+                    <div className="flex items-center justify-center py-24 opacity-30">
+                        <div className="w-6 h-6 border border-slate-600 border-t-transparent rounded-full animate-spin"></div>
                     </div>
                 ) : error ? (
-                    <div className="text-center py-20">
-                        <p className="text-rose-400">{error}</p>
+                    <div className="text-center py-24">
+                        <p className="text-slate-500 text-sm">{error}</p>
                         <button
                             onClick={fetchItems}
-                            className="mt-4 text-slate-400 hover:text-slate-200"
+                            className="mt-4 text-slate-600 hover:text-slate-400 text-xs"
                         >
                             Reconnect
                         </button>
                     </div>
                 ) : (streamItems.length === 0 && workingSet.length === 0 && recallItems.length === 0) ? (
-                    <div className="text-center py-32 opacity-60">
-                        <p className="text-lg font-medium text-slate-400">Leo remembers quietly.</p>
-                        <p className="text-slate-500 mt-2">There’s nothing here yet.</p>
+                    <div className="text-center py-32">
+                        <p className="text-slate-500 text-sm">Nothing here yet.</p>
+                        <p className="text-slate-600 text-xs mt-2">Leo remembers quietly.</p>
                     </div>
                 ) : (
-                    <div className="animate-fade-in-up">
-                        {/* Working Set (Only when NOT searching) */}
+                    <div>
+                        {/* Recently Resurfaced (Working Set) */}
                         {!searching && workingSet.length > 0 && (
-                            <WorkingSet items={workingSet} />
+                            <section className="mb-16">
+                                <h2 className="text-xs font-medium text-slate-600 uppercase tracking-wider mb-6">
+                                    Recently resurfaced
+                                </h2>
+                                <WorkingSet items={workingSet} />
+                            </section>
                         )}
 
-                        {/* Recall Section (Only when searching + items exist) */}
+                        {/* Recall Results */}
                         {recallItems.length > 0 && (
-                            <section className="mb-12 mx-2 sm:mx-0 p-4 rounded-2xl bg-amber-500/5 border border-amber-500/10">
-                                <h2 className="flex items-center gap-2 text-xs font-semibold text-amber-500 uppercase tracking-widest mb-4">
-                                    <span className="text-lg">✨</span> You’ve seen this before
+                            <section className="mb-16 py-4 border-l-2 border-amber-500/20 pl-4">
+                                <h2 className="text-xs font-medium text-amber-500/70 uppercase tracking-wider mb-4">
+                                    ✨ You've seen this before
                                 </h2>
                                 <WorkingSet items={recallItems} />
                             </section>
                         )}
 
-                        {/* Stream / Search Results */}
-                        <div className="relative">
-                            {searching && streamItems.length > 0 && <h2 className="text-xs font-semibold text-slate-600 uppercase tracking-widest mb-6 pl-2">Timeline Matches</h2>}
+                        {/* Memory Stream */}
+                        <section>
+                            {searching && streamItems.length > 0 && (
+                                <h2 className="text-xs font-medium text-slate-600 uppercase tracking-wider mb-6">
+                                    Timeline
+                                </h2>
+                            )}
                             <StreamTimeline items={streamItems} />
-                        </div>
+                        </section>
                     </div>
                 )}
             </main>
         </div>
     );
 }
+

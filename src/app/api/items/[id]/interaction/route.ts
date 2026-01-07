@@ -11,7 +11,7 @@ export async function POST(
         const body = await request.json();
         const signal = body.signal as SignalType;
 
-        if (!['view', 'copy', 'recall_click'].includes(signal)) {
+        if (!['view', 'copy', 'recall_click', 'recall_select'].includes(signal)) {
             return NextResponse.json({ error: 'Invalid signal' }, { status: 400 });
         }
 

@@ -1,0 +1,174 @@
+# UI Redesign Prompt: Ambient Memory Stream (Dark-First)
+
+## Product Context (Read Carefully)
+
+This product is NOT:
+- a note-taking app
+- a writing tool
+- a productivity dashboard
+- a workspace
+
+It IS:
+- an ambient memory layer
+- a passive recall surface
+- something users glance at, not operate inside
+
+Users should never feel pressure to:
+- organize
+- process
+- clean up
+- decide what to do
+
+The UI must feel calm, quiet, and slightly invisible.
+
+---
+
+## Design Goal
+
+Redesign the “Stream” page to feel like:
+> “A soft memory surface that fades into the background.”
+
+Not:
+> “Here’s everything you saved — manage it.”
+
+If the page feels impressive or powerful, the design has failed.
+
+---
+
+## Theme Direction
+
+### Dark-first, low-arousal theme
+
+- Soft dark background (not pure black)
+- Muted contrast
+- No neon or saturated colors
+- Accent color used sparingly (only for recall states)
+
+Think:
+- night mode
+- peripheral vision
+- low cognitive load
+
+Avoid:
+- harsh blacks
+- glowing accents
+- cyberpunk / dev-tool aesthetics
+
+---
+
+## Visual Principles (Non-Negotiable)
+
+- Fewer boxes, more flow
+- Minimal borders
+- No heavy cards
+- Soft separators only
+- Typography over containers
+
+Whitespace (negative space) is a feature.
+
+---
+
+## Page Structure (Top → Bottom)
+
+### 1. Top Bar
+- Minimal logo only
+
+
+---
+
+### 2. Recall Prompt (Not Search)
+
+Replace “What are you thinking about?” with a quieter affordance.
+
+Examples:
+- “Recall something…”
+- “Bring something back”
+
+Design:
+- Lower visual priority than content
+- Looks optional
+- Not a command, not a task
+
+This is recall-on-demand, not search-first UX.
+
+---
+
+### 3. Recently Resurfaced (Primary Focus)
+
+This section should feel like:
+> “Things your mind has touched recently.”
+
+Design:
+- Single-column list
+- No cards
+- No shadows
+- Soft spacing
+
+Each item shows:
+- Title (muted, readable)
+- Source · time (lighter, secondary)
+
+This is recognition, not browsing.
+
+---
+
+### 4. Memory Stream (Secondary)
+
+A continuous chronological flow.
+
+Design:
+- No timeline rail
+- Use time anchors only (Today, Yesterday, Last week)
+
+Items should feel like memories, not records.
+
+---
+
+### 5. Actions & Controls
+
+- No visible “manage” affordances
+- Interactions should appear only on hover, if at all
+
+Nothing should ask: “What do you want to do with this?”
+
+---
+
+## Typography Guidelines
+
+- Headings: medium weight, not bold
+- Body text: slightly dimmed
+- URLs: small, muted
+- Timestamps: faint, secondary
+
+Nothing should shout.
+
+---
+
+## Emotional Outcome Checklist
+
+After the redesign, the user should feel:
+- calm
+- unpressured
+- unjudged
+- slightly relieved
+
+If the UI feels:
+- busy
+- clever
+- feature-rich
+- dashboard-like
+
+It has failed.
+
+---
+
+## Final Test
+
+Ask:
+> “Does this page ask anything of the user?”
+
+If yes → simplify further.
+
+---
+
+Design for memory, not productivity.

@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Leo - Ambient Memory Layer
+
+**Your second brain for the web.** Leo captures, enriches, and resurfaces content with zero friction.
+
+## Features
+
+### 🦁 Capture (Cmd+Shift+E)
+Save anything from any webpage:
+- Selected text
+- Current page URL
+- Automatically enriched with AI-generated titles and summaries
+
+### 🔮 Recall (Cmd+Shift+Y)
+Instant context-aware memory retrieval:
+- Semantic search across your saved items
+- Domain-aware prioritization with cross-domain diversity
+- Floating overlay with keyboard navigation
+- Works everywhere: articles, docs, social media
+
+### 📊 Stream View
+Ambient memory surface:
+- Dark, minimal UI designed for calm browsing
+- Time-grouped content ("Today", "Yesterday")
+- Hover-only actions to reduce visual clutter
+- Search/recall prompt for quick lookups
+
+## Tech Stack
+
+- **Framework:** Next.js 15+ (App Router)
+- **Database:** Neon PostgreSQL with pgvector
+- **ORM:** Drizzle
+- **AI:** OpenAI embeddings, Gemini/Kimi for enrichment
+- **Hosting:** Vercel
+- **Extensions:** Chrome (MV3), Raycast
+
+## Project Structure
+
+```
+Leo/
+├── src/
+│   ├── app/           # Next.js App Router pages & API routes
+│   ├── components/    # React components
+│   └── lib/           # Utilities, DB, AI clients
+├── extension/         # Chrome Extension (MV3)
+├── raycast-extension/ # Raycast Extension
+└── public/            # Static assets
+```
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/capture` | POST | Save content from extension/Telegram |
+| `/api/recall` | POST | Semantic search for relevant memories |
+| `/api/recall` | PUT | Track dismiss/never-show signals |
+| `/api/items` | GET | List items with filtering |
+| `/api/items/search` | GET | Full-text search |
+| `/api/admin/enrich` | POST | AI enrichment for URLs |
+
+## Environment Variables
+
+```env
+DATABASE_URL=           # Neon PostgreSQL connection string
+OPENAI_API_KEY=         # For embeddings
+GOOGLE_AI_API_KEY=      # For Gemini enrichment (optional)
+MOONSHOT_API_KEY=       # For Kimi enrichment (optional)
+TELEGRAM_BOT_TOKEN=     # For Telegram capture (optional)
+EXT_AUTH_TOKEN=         # Extension authentication token
+```
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+# Install dependencies
+npm install
+
+# Run development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# Build for production
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Chrome Extension Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Navigate to `chrome://extensions`
+2. Enable **Developer mode**
+3. Click **Load unpacked** → select `extension/` directory
+4. Configure shortcuts in `chrome://extensions/shortcuts`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Version History
 
-## Learn More
+| Version | Features |
+|---------|----------|
+| V1 | Basic capture, inbox view |
+| V2 | URL enrichment, importance scoring |
+| V3 | Ambient Memory Layer: Recall hotkey, decay scoring, Stream UI |
+| V3.2 | Result diversity, cross-domain matching, refined UI |
 
-To learn more about Next.js, take a look at the following resources:
+## License
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Private - All rights reserved.

@@ -1,11 +1,12 @@
 {
     "manifest_version": 3,
-    "name": "Leo - Zero Friction Capture",
-    "version": "1.0",
-    "description": "Instant capture for your second brain.",
+    "name": "Leo - Ambient Memory",
+    "version": "2.1",
+    "description": "Capture and recall from your second brain.",
     "permissions": [
         "activeTab",
-        "scripting"
+        "scripting",
+        "clipboardRead"
     ],
     "host_permissions": [
         "http://localhost:3000/*",
@@ -14,6 +15,11 @@
     "background": {
         "service_worker": "background.js"
     },
+    "icons": {
+        "16": "icons/icon16.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    },
     "commands": {
         "save_capture": {
             "suggested_key": {
@@ -21,9 +27,21 @@
                 "mac": "Command+Shift+E"
             },
             "description": "Save to Leo"
+        },
+        "trigger_recall": {
+            "suggested_key": {
+                "default": "Ctrl+Shift+Y",
+                "mac": "Command+Shift+Y"
+            },
+            "description": "Recall from Leo"
         }
     },
     "action": {
-        "default_title": "Leo Capture"
+        "default_title": "Leo - Click to Recall",
+        "default_icon": {
+            "16": "icons/icon16.png",
+            "48": "icons/icon48.png",
+            "128": "icons/icon128.png"
+        }
     }
 }

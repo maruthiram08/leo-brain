@@ -1,0 +1,289 @@
+
+# Ambient Memory Layer — MVP Engineering Spec
+
+## 0. Product Boundary (READ FIRST)
+
+This product is:
+- NOT a writing tool
+- NOT a notes app
+- NOT a workspace
+
+Users always type and work in OTHER products.
+We only appear:
+- to capture
+- to recall
+- to disappear
+
+If a feature requires users to “work inside” our app, it is out of scope.
+
+---
+
+## 1. Core Data Model
+
+### 1.1 Event (Primary Primitive)
+
+An Event represents something that passed through user attention.
+
+Required fields:
+- event_id (UUID)
+- type (link | text | screenshot | thought)
+- payload (raw content)
+- source:
+  - url (if available)
+  - page_title (if available)
+  - app_name (if available)
+- created_at (timestamp)
+
+Derived (internal only):
+- last_accessed_at
+- reuse_count
+- dismiss_count
+- importance_score (internal, invisible)
+- decay_score (internal, invisible)
+
+STRICT RULES:
+- No titles
+- No tags
+- No folders
+- No user-defined metadata
+
+---
+
+## 2. Feature Specs
+
+---
+
+## 2.1 Zero-Friction Event Capture
+
+### Goal
+Capture anything with ONE action and ZERO decisions.
+
+### Surfaces
+- Chrome Extension
+- Global Hotkey
+- Share Sheet (optional later)
+
+### Triggers
+- User clicks “Save”
+- User presses hotkey (Cmd + Shift + S)
+
+### System Input
+- Raw payload (URL, selected text, screenshot, or typed text)
+- Timestamp
+- Source context
+
+### System Behavior
+1. Create new Event
+2. Append to event store
+3. Show optional toast: “Saved”
+4. Return control immediately
+
+### Explicit Non-Goals
+- No title prompt
+- No classification
+- No editor
+- No navigation
+
+### Acceptance Criteria
+- Capture completes in <300ms
+- User can capture without leaving current app
+- Capture never asks a question
+
+---
+
+## 2.2 Append-Only Stream (Read-Only)
+
+### Goal
+Provide a reliable memory log without maintenance burden.
+
+### Surface
+- Extension panel or minimal web view
+
+### Behavior
+- Display events in strict chronological order
+- Newest first
+- Infinite scroll
+
+Each event shows:
+- Payload preview
+- Source
+- Timestamp
+
+### Explicit Non-Goals
+- No states (processed/unprocessed)
+- No filters
+
+### Acceptance Criteria
+- User can scroll entire history
+- User never needs to “organize” anything
+
+---
+
+## 2.3 Behavioral Signals Engine
+
+### Goal
+Infer importance without user input.
+
+### Signals to Track (ONLY THESE)
+
+Positive signals:
+- Event opened
+- Text copied from event
+- Event selected after recall
+- Event reused multiple times
+
+Negative signals:
+- Event dismissed during recall
+- Event ignored repeatedly
+- Time since last access
+
+### Signals NOT Allowed
+- Keystroke logging
+- Full document reading
+- Continuous typing observation
+
+### System Behavior
+- Update importance_score
+- Update decay_score
+- No UI exposure
+
+### Acceptance Criteria
+- No settings
+- No dashboards
+- No user awareness required
+
+---
+
+## 2.4 Earned Recall (Explicit Trigger Only)
+
+### Goal
+Surface relevant past events during thinking moments.
+
+### Where Recall Happens
+- Browser text fields
+- Docs, Notion, Slack, Email, VS Code
+- Any page via extension
+
+### Trigger (MVP: ONE ONLY)
+- User presses recall hotkey (Cmd + Shift + R)
+
+### Context Passed
+ONE of:
+- Selected text
+- Clipboard contents
+- Current page URL
+
+### System Behavior
+1. Fetch candidate events
+2. Rank by:
+   - Context similarity
+   - Recency
+   - importance_score
+3. Select MAX 2 events
+4. Show in side panel or overlay
+
+### Copy Rules
+Allowed:
+> “You’ve seen something like this before”
+
+Not allowed:
+- “Insight”
+- “AI recommends”
+- “Based on your knowledge graph”
+
+### Dismissal Behavior
+- User can dismiss each item
+- Dismissal reduces future resurfacing probability
+
+### Acceptance Criteria
+- Recall never blocks typing
+- Recall never opens automatically
+- Recall always disappears cleanly
+
+---
+
+## 2.5 Working Set (Internal Only)
+
+### Goal
+Reflect current cognitive focus without user management.
+
+### Definition
+A rolling internal subset of ~10–20 events weighted by:
+- Recent reuse
+- Contextual similarity
+- Low decay_score
+
+### Behavior
+- Bias recall toward working set
+- Never expose as UI
+
+### Explicit Non-Goals
+- No pinning
+- No starring
+- No “focus mode”
+
+### Acceptance Criteria
+- Recall quality improves over time
+- User never manages focus manually
+---
+
+## 3. Privacy & Trust Constraints (Non-Negotiable)
+
+- No continuous typing observation
+- No reading full documents
+- No storing user-authored content unless explicitly captured
+- Recall only runs on explicit user action
+
+Violation = feature rejection.
+
+---
+
+## 4.Success Metrics (Internal)
+
+We do NOT track:
+- Time spent
+- Engagement frequency
+- Items saved per day
+
+We DO track:
+- Recall acceptance rate
+- Dismissal rate
+- Repeat reuse of resurfaced events
+- Long gaps with successful return
+
+---
+
+## 5. Kill Criteria
+
+Stop or redesign if:
+- Users ask for folders or tags
+- Users feel behind after inactivity
+- Recall feels random or noisy
+- Capture requires explanation
+
+---
+
+## 6. Final Engineering Principle
+
+If a feature:
+- Requires configuration
+- Requires explanation
+- Requires maintenance
+
+It is OUT OF SCOPE.
+
+---
+
+END OF SPEC
+```
+
+---
+
+## How to use this spec
+
+    
+- Use **acceptance criteria** as PR checklist
+    
+- Reject features by pointing to **Non-Goals**, not opinion
+    
+- Keep this frozen until recall trust is proven

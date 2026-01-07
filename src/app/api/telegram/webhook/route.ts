@@ -4,6 +4,7 @@ import { items } from '@/lib/db/schema';
 import { sendTelegramMessage, isUrl, TelegramUpdate } from '@/lib/telegram';
 import { isRateLimited } from '@/lib/rate-limiter';
 import { logInfo, logError, logWarn, withRetry } from '@/lib/logger';
+import { generateEmbedding } from '@/lib/embeddings';
 
 export async function POST(request: NextRequest) {
     const startTime = Date.now();
@@ -48,10 +49,20 @@ export async function POST(request: NextRequest) {
         try {
             await withRetry(
                 async () => {
+                    let embedding: number[] | null = null;
+                    try {
+                        // Generate embedding
+                        const context = `${content} ${contentType === 'url' ? 'URL' : 'Note'}`;
+                        embedding = await generateEmbedding(context);
+                    } catch (e) {
+                        console.error('Failed to embed Telegram msg:', e);
+                    }
+
                     await db.insert(items).values({
                         telegramUserId: userId,
                         contentType,
                         content,
+                        embedding,
                     });
                 },
                 {

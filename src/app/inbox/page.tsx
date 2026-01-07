@@ -53,9 +53,17 @@ export default function InboxPage() {
             if (!response.ok) throw new Error('Search failed');
             const data = await response.json();
 
-            // Handle V2 search format if implemented, or legacy
+            // Merge results and recall for complete display
             const results = data.items || data.results || [];
-            setItems(results);
+            const recall = data.recall || [];
+            // Combine and dedupe by id
+            const combined = [...results];
+            recall.forEach((item: Item) => {
+                if (!combined.find(r => r.id === item.id)) {
+                    combined.unshift(item); // Put recall items at top
+                }
+            });
+            setItems(combined);
         } catch (err) {
             console.error(err);
             setError('Search failed');
