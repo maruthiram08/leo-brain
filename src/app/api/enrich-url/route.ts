@@ -9,7 +9,7 @@ import { enrichUrlWithKimi } from '@/lib/kimi';
  * POST /api/enrich-url
  * Two-tier URL enrichment:
  * - Tier 1: Cheerio (fast metadata extraction)
- * - Tier 2: AI (summary + tags for recall)
+ * - Tier 2: AI (summary + semantic tags for recall)
  */
 export async function POST(request: NextRequest) {
     try {
@@ -39,10 +39,10 @@ export async function POST(request: NextRequest) {
             })
             .where(eq(items.id, itemId));
 
-        // ===== TIER 2: AI Summary + Tags (async, non-blocking) =====
+        // ===== TIER 2: AI Summary + Semantic Tags (async, non-blocking) =====
         // Fire and forget - don't await, don't block response
-        generateAISummary(itemId, url).catch(err => {
-            console.error('AI summary generation failed:', err);
+        generateAISemanticTags(itemId, url, enrichment.enrichedTitle, enrichment.enrichedDescription).catch(err => {
+            console.error('AI semantic tagging failed:', err);
         });
 
         return NextResponse.json({
@@ -61,64 +61,147 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Tier 2: Generate AI summary and tags using Kimi
- * Runs async after Tier 1 completes
+ * Tier 2: Generate AI summary and semantic tags using Kimi
+ * Falls back to heuristic tag generation if AI returns empty
  */
-async function generateAISummary(itemId: string, url: string): Promise<void> {
+async function generateAISemanticTags(
+    itemId: string,
+    url: string,
+    title: string | null,
+    description: string | null
+): Promise<void> {
     try {
-        // Use Kimi for AI summary/tags
+        // Try Kimi for AI enrichment with structured tags
         const aiResult = await enrichUrlWithKimi(url);
 
-        // Extract tags from description or generate simple ones
-        const tags = generateTagsFromContent(aiResult.title, aiResult.description, url);
+        // Check if Kimi returned meaningful tags
+        const hasValidTags = aiResult.topics.length > 0 || aiResult.intent.length > 0;
 
-        // Update with Tier 2 results
-        await db.update(items)
-            .set({
-                aiSummary: aiResult.description?.slice(0, 200),
-                aiTags: tags,
-                updatedAt: new Date()
-            })
-            .where(eq(items.id, itemId));
-
-        console.log(`Tier 2 AI enrichment complete for ${itemId}`);
+        if (hasValidTags) {
+            // Use AI-generated tags
+            await db.update(items)
+                .set({
+                    aiSummary: aiResult.description?.slice(0, 200),
+                    aiTopics: aiResult.topics.join(','),
+                    aiIntent: aiResult.intent.join(','),
+                    aiDomain: aiResult.domain,
+                    updatedAt: new Date()
+                })
+                .where(eq(items.id, itemId));
+            console.log(`Tier 2 AI tags for ${itemId}: topics=${aiResult.topics.join(',')}`);
+        } else {
+            // Fallback: Generate heuristic tags from title/description/URL
+            const fallbackTags = generateFallbackTags(url, title, description);
+            await db.update(items)
+                .set({
+                    aiSummary: description?.slice(0, 200) || null,
+                    aiTopics: fallbackTags.topics.join(','),
+                    aiIntent: fallbackTags.intent.join(','),
+                    aiDomain: fallbackTags.domain,
+                    updatedAt: new Date()
+                })
+                .where(eq(items.id, itemId));
+            console.log(`Tier 2 fallback tags for ${itemId}: topics=${fallbackTags.topics.join(',')}`);
+        }
     } catch (error) {
         console.error('Tier 2 AI enrichment failed:', error);
-        // Silent failure - Tier 1 data is still available
+        // Even on error, try fallback tags
+        try {
+            const fallbackTags = generateFallbackTags(url, title, description);
+            await db.update(items)
+                .set({
+                    aiTopics: fallbackTags.topics.join(','),
+                    aiIntent: fallbackTags.intent.join(','),
+                    aiDomain: fallbackTags.domain,
+                    updatedAt: new Date()
+                })
+                .where(eq(items.id, itemId));
+        } catch { }
     }
 }
 
 /**
- * Generate simple tags from content
+ * Generate heuristic tags when AI fails
+ * Uses URL patterns, title keywords, and domain detection
  */
-function generateTagsFromContent(title: string, description: string, url: string): string {
-    const tags: string[] = [];
+function generateFallbackTags(
+    url: string,
+    title: string | null,
+    description: string | null
+): { topics: string[], intent: string[], domain: string } {
+    const topics: string[] = [];
+    const intent: string[] = [];
+    let domain = 'unknown';
 
-    // Add domain-based tag
-    try {
-        const domain = new URL(url).hostname.replace('www.', '');
-        tags.push(domain.split('.')[0]); // e.g., 'medium', 'github'
-    } catch { }
-
-    // Add content type as tag
     const lower = url.toLowerCase();
-    if (lower.includes('youtube') || lower.includes('vimeo')) tags.push('video');
-    if (lower.includes('github') || lower.includes('gitlab')) tags.push('code');
-    if (lower.includes('twitter') || lower.includes('x.com')) tags.push('social');
-    if (lower.includes('medium') || lower.includes('substack')) tags.push('blog');
-    if (lower.includes('reddit')) tags.push('discussion');
-    if (lower.includes('linkedin')) tags.push('professional');
+    const titleLower = (title || '').toLowerCase();
+    const descLower = (description || '').toLowerCase();
+    const combined = `${titleLower} ${descLower}`;
 
-    // Extract keywords from title (simple approach)
-    if (title) {
-        const words = title.toLowerCase()
-            .replace(/[^a-z0-9\s]/g, '')
-            .split(/\s+/)
-            .filter(w => w.length > 4 && w.length < 15)
-            .slice(0, 3);
-        tags.push(...words);
+    // === DOMAIN DETECTION ===
+    if (lower.includes('github') || lower.includes('gitlab') || combined.includes('code') || combined.includes('programming')) {
+        domain = 'tech';
+    } else if (lower.includes('medium') || lower.includes('substack') || lower.includes('dev.to')) {
+        domain = 'tech';
+    } else if (lower.includes('youtube') || lower.includes('vimeo') || lower.includes('twitch')) {
+        domain = 'entertainment';
+    } else if (lower.includes('twitter') || lower.includes('x.com') || lower.includes('linkedin')) {
+        domain = 'business';
+    } else if (lower.includes('reddit')) {
+        domain = 'lifestyle';
+    } else if (combined.includes('invest') || combined.includes('stock') || combined.includes('finance')) {
+        domain = 'finance';
+    } else if (combined.includes('design') || combined.includes('ui') || combined.includes('ux')) {
+        domain = 'design';
     }
 
-    // Deduplicate and limit
-    return [...new Set(tags)].slice(0, 8).join(',');
+    // === INTENT DETECTION ===
+    if (combined.includes('tutorial') || combined.includes('how to') || combined.includes('guide') || combined.includes('learn')) {
+        intent.push('tutorial');
+    }
+    if (combined.includes('documentation') || combined.includes('docs') || combined.includes('reference') || combined.includes('api')) {
+        intent.push('reference');
+    }
+    if (combined.includes('discussion') || lower.includes('reddit') || combined.includes('comment')) {
+        intent.push('discussion');
+    }
+    if (combined.includes('news') || combined.includes('announce') || combined.includes('release')) {
+        intent.push('news');
+    }
+    if (intent.length === 0) intent.push('reference');
+
+    // === TOPIC EXTRACTION from title ===
+    // Extract meaningful words from title
+    const techKeywords = ['react', 'nextjs', 'next.js', 'javascript', 'typescript', 'python', 'node', 'api', 'database', 'frontend', 'backend', 'web', 'app', 'mobile', 'ai', 'machine learning', 'css', 'html', 'vue', 'angular', 'svelte', 'tailwind', 'vercel', 'deploy', 'docker', 'kubernetes', 'aws', 'cloud'];
+
+    for (const keyword of techKeywords) {
+        if (combined.includes(keyword)) {
+            topics.push(keyword.replace('.', ''));
+        }
+    }
+
+    // Add domain-based topics
+    if (lower.includes('github')) topics.push('github', 'code');
+    if (lower.includes('youtube')) topics.push('video');
+    if (lower.includes('reddit')) topics.push('community');
+    if (lower.includes('twitter') || lower.includes('x.com')) topics.push('social');
+
+    // Extract nouns from title (simple heuristic - words > 4 chars, not common words)
+    const stopWords = new Set(['this', 'that', 'with', 'from', 'have', 'been', 'were', 'will', 'about', 'their', 'would', 'could', 'should', 'there', 'where', 'which', 'while', 'being', 'https', 'http', 'www']);
+    const words = (title || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 4 && w.length < 15 && !stopWords.has(w));
+
+    topics.push(...words.slice(0, 3));
+
+    // Deduplicate
+    const uniqueTopics = [...new Set(topics)].slice(0, 5);
+
+    return {
+        topics: uniqueTopics.length > 0 ? uniqueTopics : ['general'],
+        intent: intent.slice(0, 2),
+        domain
+    };
 }

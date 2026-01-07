@@ -44,9 +44,12 @@ export const items = pgTable('items', {
     enrichmentStatus: text('enrichment_status').default('pending'), // pending | success | failed
     enrichmentAttemptedAt: timestamp('enrichment_attempted_at', { withTimezone: true }),
 
-    // V4.1: AI-generated summary and tags for better recall
+    // V4.1: AI-generated summary and semantic tags for recall matching
     aiSummary: text('ai_summary'), // Short summary from Kimi/Gemini (max 200 chars)
-    aiTags: text('ai_tags'), // Comma-separated tags for recall matching
+    aiTags: text('ai_tags'), // Legacy: comma-separated tags (kept for backwards compat)
+    aiTopics: text('ai_topics'), // Comma-separated topic tags (e.g. "nextjs,react,routing")
+    aiIntent: text('ai_intent'), // Intent tags (e.g. "tutorial,learn")
+    aiDomain: text('ai_domain'), // Broad domain (e.g. "tech", "finance", "design")
 
     // V5: Ambient Memory Layer (Earned Recall)
     decayScore: integer('decay_score').notNull().default(0), // Exponential decay based on time since last access

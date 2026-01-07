@@ -9,12 +9,7 @@ import { enrichUrlWithKimi } from '@/lib/kimi';
  * POST /api/admin/enrich-v2
  * Backfill enrichment for existing URLs using two-tier approach:
  * - Tier 1: Cheerio (fast metadata)
- * - Tier 2: Kimi AI (summary + tags)
- * 
- * Query params:
- * - limit: number of items to process (default: 10)
- * - force: 're-enrich all URLs regardless of status
- * - tier: '1' for cheerio only, '2' for both (default: '2')
+ * - Tier 2: Kimi AI (summary + semantic tags) with fallback
  */
 export async function POST(request: NextRequest) {
     const startTime = Date.now();
@@ -25,7 +20,6 @@ export async function POST(request: NextRequest) {
         const force = searchParams.get('force') === 'true';
         const tier = searchParams.get('tier') || '2';
 
-        // Find URL items that need enrichment
         const pendingItems = await db.select()
             .from(items)
             .where(
@@ -42,10 +36,7 @@ export async function POST(request: NextRequest) {
             .limit(limit);
 
         if (pendingItems.length === 0) {
-            return NextResponse.json({
-                message: 'No pending items to enrich',
-                processed: 0
-            });
+            return NextResponse.json({ message: 'No pending items to enrich', processed: 0 });
         }
 
         const results = [];
@@ -70,49 +61,68 @@ export async function POST(request: NextRequest) {
 
                 let aiResult = null;
 
-                // ===== TIER 2: AI Summary + Tags =====
+                // ===== TIER 2: AI + Fallback =====
                 if (tier === '2') {
                     try {
                         const kimiResult = await enrichUrlWithKimi(item.content);
-                        const tags = generateTagsFromContent(kimiResult.title, kimiResult.description, item.content);
+                        const hasValidTags = kimiResult.topics.length > 0;
 
+                        if (hasValidTags) {
+                            await db.update(items)
+                                .set({
+                                    aiSummary: kimiResult.description?.slice(0, 200),
+                                    aiTopics: kimiResult.topics.join(','),
+                                    aiIntent: kimiResult.intent.join(','),
+                                    aiDomain: kimiResult.domain,
+                                    updatedAt: new Date()
+                                })
+                                .where(eq(items.id, item.id));
+                            aiResult = { topics: kimiResult.topics, source: 'ai' };
+                        } else {
+                            // Fallback tags
+                            const fallback = generateFallbackTags(
+                                item.content,
+                                enrichment.enrichedTitle,
+                                enrichment.enrichedDescription
+                            );
+                            await db.update(items)
+                                .set({
+                                    aiTopics: fallback.topics.join(','),
+                                    aiIntent: fallback.intent.join(','),
+                                    aiDomain: fallback.domain,
+                                    updatedAt: new Date()
+                                })
+                                .where(eq(items.id, item.id));
+                            aiResult = { topics: fallback.topics, source: 'fallback' };
+                        }
+                    } catch (aiError) {
+                        console.error('Tier 2 failed:', aiError);
+                        const fallback = generateFallbackTags(item.content, enrichment.enrichedTitle, enrichment.enrichedDescription);
                         await db.update(items)
                             .set({
-                                aiSummary: kimiResult.description?.slice(0, 200),
-                                aiTags: tags,
+                                aiTopics: fallback.topics.join(','),
+                                aiIntent: fallback.intent.join(','),
+                                aiDomain: fallback.domain,
                                 updatedAt: new Date()
                             })
                             .where(eq(items.id, item.id));
-
-                        aiResult = { summary: kimiResult.description?.slice(0, 50), tags };
-                    } catch (aiError) {
-                        console.error('Tier 2 AI failed for', item.id, aiError);
-                        aiResult = 'failed';
+                        aiResult = { topics: fallback.topics, source: 'fallback-error' };
                     }
                 }
 
                 results.push({
                     id: item.id,
-                    url: item.content.slice(0, 50) + '...',
+                    url: item.content.slice(0, 40) + '...',
                     tier1: enrichment.enrichmentStatus,
-                    title: enrichment.enrichedTitle?.slice(0, 40),
+                    title: enrichment.enrichedTitle?.slice(0, 30),
                     tier2: aiResult
                 });
 
             } catch (error) {
                 await db.update(items)
-                    .set({
-                        enrichmentStatus: 'failed',
-                        enrichmentAttemptedAt: new Date(),
-                        updatedAt: new Date()
-                    })
+                    .set({ enrichmentStatus: 'failed', enrichmentAttemptedAt: new Date() })
                     .where(eq(items.id, item.id));
-
-                results.push({
-                    id: item.id,
-                    status: 'failed',
-                    error: error instanceof Error ? error.message : 'Unknown'
-                });
+                results.push({ id: item.id, status: 'failed', error: error instanceof Error ? error.message : 'Unknown' });
             }
         }
 
@@ -120,46 +130,52 @@ export async function POST(request: NextRequest) {
             message: `Processed ${results.length} items`,
             processed: results.length,
             duration: Date.now() - startTime,
-            tier: tier,
             results
         });
 
     } catch (error) {
-        console.error('Batch enrichment failed:', error);
-        return NextResponse.json(
-            { error: 'Enrichment failed', details: error instanceof Error ? error.message : 'Unknown' },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: 'Enrichment failed' }, { status: 500 });
     }
 }
 
-/**
- * Generate simple tags from content
- */
-function generateTagsFromContent(title: string, description: string, url: string): string {
-    const tags: string[] = [];
-
-    try {
-        const domain = new URL(url).hostname.replace('www.', '');
-        tags.push(domain.split('.')[0]);
-    } catch { }
+function generateFallbackTags(url: string, title: string | null, description: string | null) {
+    const topics: string[] = [];
+    const intent: string[] = [];
+    let domain = 'unknown';
 
     const lower = url.toLowerCase();
-    if (lower.includes('youtube') || lower.includes('vimeo')) tags.push('video');
-    if (lower.includes('github') || lower.includes('gitlab')) tags.push('code');
-    if (lower.includes('twitter') || lower.includes('x.com')) tags.push('social');
-    if (lower.includes('medium') || lower.includes('substack')) tags.push('blog');
-    if (lower.includes('reddit')) tags.push('discussion');
-    if (lower.includes('linkedin')) tags.push('professional');
+    const combined = `${(title || '').toLowerCase()} ${(description || '').toLowerCase()}`;
 
-    if (title) {
-        const words = title.toLowerCase()
-            .replace(/[^a-z0-9\s]/g, '')
-            .split(/\s+/)
-            .filter(w => w.length > 4 && w.length < 15)
-            .slice(0, 3);
-        tags.push(...words);
+    // Domain
+    if (lower.includes('github') || lower.includes('dev.to') || combined.includes('programming')) domain = 'tech';
+    else if (lower.includes('youtube') || lower.includes('vimeo')) domain = 'entertainment';
+    else if (lower.includes('twitter') || lower.includes('linkedin')) domain = 'business';
+    else if (lower.includes('reddit')) domain = 'lifestyle';
+    else if (combined.includes('invest') || combined.includes('finance')) domain = 'finance';
+
+    // Intent
+    if (combined.includes('tutorial') || combined.includes('how to')) intent.push('tutorial');
+    if (combined.includes('documentation') || combined.includes('docs')) intent.push('reference');
+    if (combined.includes('discussion') || lower.includes('reddit')) intent.push('discussion');
+    if (intent.length === 0) intent.push('reference');
+
+    // Topics from URL/title
+    const techKeywords = ['react', 'nextjs', 'javascript', 'typescript', 'python', 'api', 'frontend', 'backend', 'web', 'ai', 'docker'];
+    for (const kw of techKeywords) {
+        if (combined.includes(kw)) topics.push(kw);
     }
+    if (lower.includes('github')) topics.push('code');
+    if (lower.includes('youtube')) topics.push('video');
+    if (lower.includes('reddit')) topics.push('community');
 
-    return [...new Set(tags)].slice(0, 8).join(',');
+    // Words from title
+    const words = (title || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+        .filter(w => w.length > 4 && w.length < 15);
+    topics.push(...words.slice(0, 3));
+
+    return {
+        topics: [...new Set(topics)].slice(0, 5) || ['general'],
+        intent: intent.slice(0, 2),
+        domain
+    };
 }
