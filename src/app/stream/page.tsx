@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Item } from '@/lib/db/schema';
+import { Item, TimelineChapter } from '@/lib/db/schema';
 import { WorkingSet } from '@/components/WorkingSet';
 import { StreamTimeline } from '@/components/StreamTimeline';
 import { ViewToggle } from '@/components/ViewToggle';
@@ -10,6 +10,7 @@ import { SearchBar } from '@/components/SearchBar';
 
 export default function StreamPage() {
     const [streamItems, setStreamItems] = useState<Item[]>([]);
+    const [chapters, setChapters] = useState<TimelineChapter[]>([]);
     const [workingSet, setWorkingSet] = useState<Item[]>([]);
     const [recallItems, setRecallItems] = useState<Item[]>([]);
     const [loading, setLoading] = useState(true);
@@ -27,10 +28,12 @@ export default function StreamPage() {
             if (data.stream && data.workingSet) {
                 setStreamItems(data.stream);
                 setWorkingSet(data.workingSet);
+                setChapters(data.chapters || []);
                 setRecallItems([]);
             } else if (data.items) {
                 setStreamItems(data.items);
                 setWorkingSet([]);
+                setChapters([]);
             }
         } catch {
             setError('Failed to load memory stream');
@@ -153,7 +156,7 @@ export default function StreamPage() {
                                     Timeline
                                 </h2>
                             )}
-                            <StreamTimeline items={streamItems} />
+                            <StreamTimeline items={streamItems} chapters={chapters} />
                         </section>
                     </div>
                 )}

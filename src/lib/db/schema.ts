@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, boolean, timestamp, jsonb, integer, vector, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, boolean, timestamp, jsonb, integer, vector, index, doublePrecision } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const items = pgTable('items', {
@@ -71,4 +71,21 @@ export const items = pgTable('items', {
 
 // Type inference
 export type Item = typeof items.$inferSelect;
-export type NewItem = typeof items.$inferInsert;
+export type NewItem = typeof items.$inferSelect;
+
+export const timeline_chapters = pgTable('timeline_chapters', {
+    id: uuid('id').primaryKey().defaultRandom(),
+    title: text('title').notNull(),
+    summary: text('summary'),
+    startDate: timestamp('start_date', { withTimezone: true }).notNull(),
+    endDate: timestamp('end_date', { withTimezone: true }).notNull(),
+    topics: jsonb('topics').$type<string[]>(), // Array of relevant topics
+    score: doublePrecision('score').default(0.0), // Confidence score 0.0-1.0
+
+    // Metadata
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type TimelineChapter = typeof timeline_chapters.$inferSelect;
+export type NewTimelineChapter = typeof timeline_chapters.$inferInsert;

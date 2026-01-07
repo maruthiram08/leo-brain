@@ -17,12 +17,18 @@ Instant context-aware memory retrieval:
 - Floating overlay with keyboard navigation
 - Works everywhere: articles, docs, social media
 
-### 📊 Stream View
-Ambient memory surface:
+### 📊 Stream View ("Timeline Chapters")
+Ambient memory surface that tells a story:
 - Dark, minimal UI designed for calm browsing
+- **Narrative Chapters**: Automatically groups history into named phases (e.g., "The React Learning Phase")
 - Time-grouped content ("Today", "Yesterday")
 - Hover-only actions to reduce visual clutter
-- Search/recall prompt for quick lookups
+
+### 🔍 Robust Search
+High-recall retrieval system:
+- **Fuzzy Matching**: Finds "inflation" even if you type "infltion"
+- **Intent Detection**: Understands time (e.g., "last week") and type (e.g., "pdf") filters
+- **Instant**: Sub-100ms response time
 
 ## Tech Stack
 
@@ -96,6 +102,8 @@ npm run build
 | V2 | URL enrichment, importance scoring |
 | V3 | Ambient Memory Layer: Recall hotkey, decay scoring, Stream UI |
 | V3.2 | Result diversity, cross-domain matching, refined UI |
+| V4 | **Robust Search**: Fuzzy match, intent detection, instant latency |
+| V5 | **Timeline Chapters**: Narrative clustering, AI phase naming, automated daily generation |
 
 ## License
 

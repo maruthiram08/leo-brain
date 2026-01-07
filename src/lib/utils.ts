@@ -1,11 +1,13 @@
-import { Item } from '@/lib/db/schema';
+import { Item, TimelineChapter } from '@/lib/db/schema';
 
 interface ItemGroup {
     label: string;
     items: Item[];
+    isChapter?: boolean;
+    description?: string;
 }
 
-export function groupItemsByDate(items: Item[]): ItemGroup[] {
+export function groupItemsByDate(items: Item[], chapters: TimelineChapter[] = []): ItemGroup[] {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
@@ -22,29 +24,59 @@ export function groupItemsByDate(items: Item[]): ItemGroup[] {
         'Older': [],
     };
 
-    for (const item of items) {
-        const itemDate = new Date(item.createdAt);
+    // Calculate time ranges for matching
+    const ranges = {
+        'Today': { start: today, end: new Date(today.getTime() + 86400000) },
+        'Yesterday': { start: yesterday, end: today },
+        'This Week': { start: thisWeekStart, end: yesterday },
+        'Last Week': { start: lastWeekStart, end: thisWeekStart },
+        'This Month': { start: thisMonthStart, end: lastWeekStart },
+        'Older': { start: new Date(0), end: thisMonthStart }
+    };
 
-        if (itemDate >= today) {
-            groups['Today'].push(item);
-        } else if (itemDate >= yesterday) {
-            groups['Yesterday'].push(item);
-        } else if (itemDate >= thisWeekStart) {
-            groups['This Week'].push(item);
-        } else if (itemDate >= lastWeekStart) {
-            groups['Last Week'].push(item);
-        } else if (itemDate >= thisMonthStart) {
-            groups['This Month'].push(item);
-        } else {
-            groups['Older'].push(item);
-        }
+    for (const item of items) {
+        const itemDate = new Date(item.createdAt!);
+
+        if (itemDate >= today) groups['Today'].push(item);
+        else if (itemDate >= yesterday) groups['Yesterday'].push(item);
+        else if (itemDate >= thisWeekStart) groups['This Week'].push(item);
+        else if (itemDate >= lastWeekStart) groups['Last Week'].push(item);
+        else if (itemDate >= thisMonthStart) groups['This Month'].push(item);
+        else groups['Older'].push(item);
     }
 
-    // Return only non-empty groups in order
     const orderedLabels = ['Today', 'Yesterday', 'This Week', 'Last Week', 'This Month', 'Older'];
+
     return orderedLabels
         .filter(label => groups[label].length > 0)
-        .map(label => ({ label, items: groups[label] }));
+        .map(label => {
+            const groupRange = ranges[label as keyof typeof ranges];
+            let displayLabel = label;
+            let isChapter = false;
+            let description = undefined;
+
+            // Check if ANY chapter fully overlaps or dominates this time range
+            // For simplicity: If a chapter starts within this range, use it.
+            if (chapters.length > 0 && groupRange) {
+                const bestChapter = chapters.find(c => {
+                    const cStart = new Date(c.startDate);
+                    return cStart >= groupRange.start && cStart < groupRange.end;
+                });
+
+                if (bestChapter) {
+                    displayLabel = bestChapter.title;
+                    isChapter = true;
+                    description = bestChapter.summary || undefined;
+                }
+            }
+
+            return {
+                label: displayLabel,
+                items: groups[label],
+                isChapter,
+                description
+            };
+        });
 }
 
 export function formatTimestamp(date: Date | string): string {

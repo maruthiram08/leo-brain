@@ -2,7 +2,26 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 let genAI: GoogleGenerativeAI | null = null;
 
-function getClient(): GoogleGenerativeAI {
+// ... imports
+
+/**
+ * Generic helper to generate content from prompt
+ */
+export async function generateGeminiContent(prompt: string): Promise<string | null> {
+    const client = getClient();
+    const model = client.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+    try {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+    } catch (error) {
+        console.error('Gemini generation failed:', error);
+        return null;
+    }
+}
+
+export function getClient(): GoogleGenerativeAI {
     if (!genAI) {
         const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) {

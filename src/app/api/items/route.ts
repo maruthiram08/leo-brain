@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { items } from '@/lib/db/schema';
+import { items, timeline_chapters } from '@/lib/db/schema';
 import { desc, eq, and } from 'drizzle-orm';
 
 export async function GET(request: Request) {
@@ -35,9 +35,16 @@ export async function GET(request: Request) {
         // Filter out working set items from stream to avoid dupes in UI
         const filteredStream = stream.filter(item => !workingSetIds.includes(item.id));
 
+        // 3. Fetch Chapters
+        const chapters = await db
+            .select()
+            .from(timeline_chapters)
+            .orderBy(desc(timeline_chapters.startDate));
+
         return NextResponse.json({
             stream: filteredStream,
-            workingSet: workingSet
+            workingSet: workingSet,
+            chapters: chapters
         });
     } catch (error) {
         console.error('Failed to fetch items:', error);
