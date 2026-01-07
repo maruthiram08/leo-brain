@@ -23,11 +23,11 @@ function isUrl(str: string): boolean {
     return str.startsWith('http://') || str.startsWith('https://');
 }
 
-// Relevance thresholds - balanced for topic-based matching across domains
-const MIN_SIMILARITY = 0.4;      // Minimum to consider at all
-const STRONG_MATCH = 0.5;        // Considered a strong/confident match
+// Relevance thresholds - tuned for broader recall with semantic tags
+const MIN_SIMILARITY = 0.35;     // Minimum to consider (lowered to allow tag boost to help)
+const STRONG_MATCH = 0.42;       // Considered a strong/confident match
 const DOMAIN_BOOST = 0.05;       // Boost for matching domains
-const TAG_OVERLAP_BOOST = 0.10;  // Max boost for semantic tag overlap (hot/cold matching)
+const TAG_OVERLAP_BOOST = 0.12;  // Max boost for semantic tag overlap (hot/cold matching)
 
 /**
  * Extract topic tags from context text for tag overlap matching

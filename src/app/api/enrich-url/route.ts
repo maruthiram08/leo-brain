@@ -40,7 +40,6 @@ export async function POST(request: NextRequest) {
             .where(eq(items.id, itemId));
 
         // ===== TIER 2: AI Summary + Semantic Tags (async, non-blocking) =====
-        // Fire and forget - don't await, don't block response
         generateAISemanticTags(itemId, url, enrichment.enrichedTitle, enrichment.enrichedDescription).catch(err => {
             console.error('AI semantic tagging failed:', err);
         });
@@ -62,7 +61,7 @@ export async function POST(request: NextRequest) {
 
 /**
  * Tier 2: Generate AI summary and semantic tags using Kimi
- * Falls back to heuristic tag generation if AI returns empty
+ * Falls back to smart heuristic tag generation if AI returns empty
  */
 async function generateAISemanticTags(
     itemId: string,
@@ -71,14 +70,10 @@ async function generateAISemanticTags(
     description: string | null
 ): Promise<void> {
     try {
-        // Try Kimi for AI enrichment with structured tags
         const aiResult = await enrichUrlWithKimi(url);
-
-        // Check if Kimi returned meaningful tags
-        const hasValidTags = aiResult.topics.length > 0 || aiResult.intent.length > 0;
+        const hasValidTags = aiResult.topics.length > 0;
 
         if (hasValidTags) {
-            // Use AI-generated tags
             await db.update(items)
                 .set({
                     aiSummary: aiResult.description?.slice(0, 200),
@@ -88,31 +83,29 @@ async function generateAISemanticTags(
                     updatedAt: new Date()
                 })
                 .where(eq(items.id, itemId));
-            console.log(`Tier 2 AI tags for ${itemId}: topics=${aiResult.topics.join(',')}`);
+            console.log(`AI tags for ${itemId}: ${aiResult.topics.join(',')}`);
         } else {
-            // Fallback: Generate heuristic tags from title/description/URL
-            const fallbackTags = generateFallbackTags(url, title, description);
+            const fallback = generateFallbackTags(url, title, description);
             await db.update(items)
                 .set({
                     aiSummary: description?.slice(0, 200) || null,
-                    aiTopics: fallbackTags.topics.join(','),
-                    aiIntent: fallbackTags.intent.join(','),
-                    aiDomain: fallbackTags.domain,
+                    aiTopics: fallback.topics.join(','),
+                    aiIntent: fallback.intent.join(','),
+                    aiDomain: fallback.domain,
                     updatedAt: new Date()
                 })
                 .where(eq(items.id, itemId));
-            console.log(`Tier 2 fallback tags for ${itemId}: topics=${fallbackTags.topics.join(',')}`);
+            console.log(`Fallback tags for ${itemId}: ${fallback.topics.join(',')}`);
         }
     } catch (error) {
-        console.error('Tier 2 AI enrichment failed:', error);
-        // Even on error, try fallback tags
+        console.error('Tier 2 failed:', error);
         try {
-            const fallbackTags = generateFallbackTags(url, title, description);
+            const fallback = generateFallbackTags(url, title, description);
             await db.update(items)
                 .set({
-                    aiTopics: fallbackTags.topics.join(','),
-                    aiIntent: fallbackTags.intent.join(','),
-                    aiDomain: fallbackTags.domain,
+                    aiTopics: fallback.topics.join(','),
+                    aiIntent: fallback.intent.join(','),
+                    aiDomain: fallback.domain,
                     updatedAt: new Date()
                 })
                 .where(eq(items.id, itemId));
@@ -121,8 +114,8 @@ async function generateAISemanticTags(
 }
 
 /**
- * Generate heuristic tags when AI fails
- * Uses URL patterns, title keywords, and domain detection
+ * Generate semantic tags from content when AI fails
+ * Comprehensive keyword extraction for finance, tech, AI, design, etc.
  */
 function generateFallbackTags(
     url: string,
@@ -138,70 +131,83 @@ function generateFallbackTags(
     const descLower = (description || '').toLowerCase();
     const combined = `${titleLower} ${descLower}`;
 
-    // === DOMAIN DETECTION ===
-    if (lower.includes('github') || lower.includes('gitlab') || combined.includes('code') || combined.includes('programming')) {
-        domain = 'tech';
-    } else if (lower.includes('medium') || lower.includes('substack') || lower.includes('dev.to')) {
-        domain = 'tech';
-    } else if (lower.includes('youtube') || lower.includes('vimeo') || lower.includes('twitch')) {
-        domain = 'entertainment';
-    } else if (lower.includes('twitter') || lower.includes('x.com') || lower.includes('linkedin')) {
-        domain = 'business';
-    } else if (lower.includes('reddit')) {
-        domain = 'lifestyle';
-    } else if (combined.includes('invest') || combined.includes('stock') || combined.includes('finance')) {
-        domain = 'finance';
-    } else if (combined.includes('design') || combined.includes('ui') || combined.includes('ux')) {
-        domain = 'design';
+    // === COMPREHENSIVE KEYWORD GROUPS ===
+    const keywordGroups: Record<string, string[]> = {
+        tech: ['react', 'nextjs', 'javascript', 'typescript', 'python', 'node', 'api', 'database',
+            'frontend', 'backend', 'web', 'mobile', 'docker', 'kubernetes', 'aws', 'cloud',
+            'vue', 'angular', 'svelte', 'tailwind', 'vercel', 'deploy', 'code', 'programming',
+            'developer', 'software', 'algorithm', 'data structure', 'rust', 'golang'],
+
+        ai: ['ai', 'machine learning', 'ml', 'deep learning', 'neural', 'gpt', 'llm', 'chatgpt',
+            'claude', 'gemini', 'openai', 'anthropic', 'model', 'training', 'inference', 'agent'],
+
+        finance: ['trading', 'algorithmic', 'hedge fund', 'investment', 'stock', 'crypto', 'bitcoin',
+            'finance', 'market', 'investor', 'portfolio', 'quant', 'quantitative', 'forex',
+            'options', 'derivatives', 'fintech', 'banking', 'wealth', 'strategy'],
+
+        design: ['design', 'ui', 'ux', 'figma', 'sketch', 'prototype', 'wireframe', 'visual',
+            'typography', 'color', 'layout', 'interface', 'user experience'],
+
+        business: ['startup', 'entrepreneur', 'marketing', 'growth', 'product', 'saas', 'b2b',
+            'sales', 'revenue', 'strategy', 'leadership', 'management', 'founder']
+    };
+
+    // Match keywords and set domain
+    for (const [domainName, keywords] of Object.entries(keywordGroups)) {
+        for (const keyword of keywords) {
+            if (combined.includes(keyword)) {
+                topics.push(keyword.replace(/\s+/g, '-'));
+                if (domain === 'unknown') domain = domainName;
+            }
+        }
     }
 
+    // === URL-BASED TOPICS ===
+    if (lower.includes('github')) { topics.push('code', 'github'); domain = domain === 'unknown' ? 'tech' : domain; }
+    if (lower.includes('youtube')) { topics.push('video'); domain = domain === 'unknown' ? 'entertainment' : domain; }
+    if (lower.includes('reddit')) { topics.push('community', 'discussion'); }
+    if (lower.includes('twitter') || lower.includes('x.com')) { topics.push('social'); }
+    if (lower.includes('medium')) { topics.push('blog', 'article'); domain = domain === 'unknown' ? 'tech' : domain; }
+
     // === INTENT DETECTION ===
-    if (combined.includes('tutorial') || combined.includes('how to') || combined.includes('guide') || combined.includes('learn')) {
+    if (combined.includes('tutorial') || combined.includes('how to') || combined.includes('guide') ||
+        combined.includes('learn') || combined.includes('explains') || combined.includes('build')) {
         intent.push('tutorial');
     }
-    if (combined.includes('documentation') || combined.includes('docs') || combined.includes('reference') || combined.includes('api')) {
+    if (combined.includes('documentation') || combined.includes('docs') || combined.includes('reference')) {
         intent.push('reference');
     }
-    if (combined.includes('discussion') || lower.includes('reddit') || combined.includes('comment')) {
+    if (combined.includes('discussion') || lower.includes('reddit')) {
         intent.push('discussion');
     }
-    if (combined.includes('news') || combined.includes('announce') || combined.includes('release')) {
+    if (combined.includes('news') || combined.includes('announce')) {
         intent.push('news');
     }
     if (intent.length === 0) intent.push('reference');
 
-    // === TOPIC EXTRACTION from title ===
-    // Extract meaningful words from title
-    const techKeywords = ['react', 'nextjs', 'next.js', 'javascript', 'typescript', 'python', 'node', 'api', 'database', 'frontend', 'backend', 'web', 'app', 'mobile', 'ai', 'machine learning', 'css', 'html', 'vue', 'angular', 'svelte', 'tailwind', 'vercel', 'deploy', 'docker', 'kubernetes', 'aws', 'cloud'];
+    // === EXTRACT MEANINGFUL WORDS FROM TITLE ===
+    const stopWords = new Set(['this', 'that', 'with', 'from', 'have', 'been', 'were', 'will',
+        'about', 'their', 'would', 'could', 'should', 'there', 'where', 'which', 'while',
+        'being', 'https', 'http', 'www', 'they', 'them', 'these', 'those', 'what', 'when',
+        'actually', 'really', 'literally', 'every', 'some', 'just', 'your', 'into', 'work']);
 
-    for (const keyword of techKeywords) {
-        if (combined.includes(keyword)) {
-            topics.push(keyword.replace('.', ''));
-        }
-    }
-
-    // Add domain-based topics
-    if (lower.includes('github')) topics.push('github', 'code');
-    if (lower.includes('youtube')) topics.push('video');
-    if (lower.includes('reddit')) topics.push('community');
-    if (lower.includes('twitter') || lower.includes('x.com')) topics.push('social');
-
-    // Extract nouns from title (simple heuristic - words > 4 chars, not common words)
-    const stopWords = new Set(['this', 'that', 'with', 'from', 'have', 'been', 'were', 'will', 'about', 'their', 'would', 'could', 'should', 'there', 'where', 'which', 'while', 'being', 'https', 'http', 'www']);
     const words = (title || '')
         .toLowerCase()
         .replace(/[^a-z0-9\s]/g, ' ')
         .split(/\s+/)
-        .filter(w => w.length > 4 && w.length < 15 && !stopWords.has(w));
+        .filter(w => w.length > 3 && w.length < 15 && !stopWords.has(w));
 
-    topics.push(...words.slice(0, 3));
+    for (const word of words.slice(0, 5)) {
+        if (!topics.includes(word) && !topics.some(t => t.includes(word))) {
+            topics.push(word);
+        }
+    }
 
-    // Deduplicate
-    const uniqueTopics = [...new Set(topics)].slice(0, 5);
+    const uniqueTopics = [...new Set(topics)].slice(0, 8);
 
     return {
         topics: uniqueTopics.length > 0 ? uniqueTopics : ['general'],
         intent: intent.slice(0, 2),
-        domain
+        domain: domain || 'unknown'
     };
 }
