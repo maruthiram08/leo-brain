@@ -1,7 +1,28 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, globalShortcut, clipboard, dialog, Notification, shell, ipcMain } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, globalShortcut, clipboard, dialog, Notification, shell, ipcMain, systemPreferences } from 'electron';
 import path from 'path';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import Store from 'electron-store';
+import fs from 'fs';
+
+// --- DEBUG LOGGER ---
+const logPath = path.join(app.getPath('userData'), 'leo-debug.log');
+const log = (message: string) => {
+  const timestamp = new Date().toISOString();
+  const logMsg = `[${timestamp}] ${message}\n`;
+  try {
+    fs.appendFileSync(logPath, logMsg);
+  } catch (e) {
+    console.error("Logging failed", e);
+  }
+};
+
+// Clear log on startup
+try { fs.writeFileSync(logPath, ''); } catch (e) { }
+log(`App starting... PID: ${process.pid}`);
+log(`UserData Path: ${app.getPath('userData')}`);
+log(`Platform: ${process.platform}`);
+log(`App Name: ${app.name}`);
+log(`App Path: ${process.execPath}`);
 
 // Persist tokens
 const store = new Store();
@@ -17,68 +38,186 @@ if (process.defaultApp) {
 
 let tray: Tray | null = null;
 let mainWindow: BrowserWindow | null = null;
+let recallWindow: BrowserWindow | null = null;
 
 // Import icon (Vite will handle this path)
 import iconPath from './assets/appicon.png';
 
 const API_URL = 'https://leo-brain.vercel.app'; // Production
+const EXTENSION_TOKEN = 'LeoExt2026SecureToken'; // Same as Chrome extension
+
+// Get metadata about the source application
+interface SourceMetadata {
+  appName: string;
+  windowTitle: string;
+  url?: string;
+}
+
+const getSourceMetadata = (): Promise<SourceMetadata> => {
+  return new Promise((resolve) => {
+    // AppleScript to get frontmost app info and browser URL if applicable
+    const script = `
+      set appName to ""
+      set windowTitle to ""
+      set pageUrl to ""
+      
+      tell application "System Events"
+        set frontApp to first application process whose frontmost is true
+        set appName to name of frontApp
+        try
+          set windowTitle to name of front window of frontApp
+        end try
+      end tell
+      
+      -- Get URL if it's a browser
+      if appName is "Google Chrome" then
+        tell application "Google Chrome"
+          set pageUrl to URL of active tab of front window
+        end tell
+      else if appName is "Safari" then
+        tell application "Safari"
+          set pageUrl to URL of front document
+        end tell
+      else if appName is "Arc" then
+        tell application "Arc"
+          set pageUrl to URL of active tab of front window
+        end tell
+      end if
+      
+      return appName & "|||" & windowTitle & "|||" & pageUrl
+    `;
+
+    const child = spawn('osascript', ['-e', script]);
+    let output = '';
+
+    child.stdout.on('data', (data) => {
+      output += data.toString();
+    });
+
+    child.on('close', () => {
+      const parts = output.trim().split('|||');
+      resolve({
+        appName: parts[0] || 'Unknown',
+        windowTitle: parts[1] || '',
+        url: parts[2] || undefined
+      });
+    });
+
+    // Timeout fallback
+    setTimeout(() => {
+      resolve({ appName: 'Unknown', windowTitle: '' });
+    }, 2000);
+  });
+};
 
 const performCapture = async () => {
+  log('performCapture called');
+
   // 1. Preserve current clipboard
   const previousText = clipboard.readText();
 
-  // 2. Clear clipboard to detect change?
+  // 2. Clear clipboard to detect change
   clipboard.clear();
 
-  // 3. Simulate Cmd+C to copy selected text
-  exec(`osascript -e 'tell application "System Events" to keystroke "c" using {command down}'`, (error) => {
-    if (error) {
-      console.error("Failed to execute copy command:", error);
+  // 3. Spawn osascript directly (Fixes TCC Attribution)
+  log('Triggering Cmd+C (spawn osascript)');
+
+  const script = 'tell application "System Events" to keystroke "c" using {command down}';
+  const child = spawn('osascript', ['-e', script]);
+
+  let stderrData = '';
+
+  child.stderr.on('data', (data) => {
+    stderrData += data.toString();
+  });
+
+  child.on('error', (err) => {
+    log(`Spawn error: ${err.message}`);
+    new Notification({ title: 'Capture Error', body: 'Failed to launch capture process.' }).show();
+  });
+
+  child.on('close', (code) => {
+    log(`osascript process exited with code ${code}`);
+
+    if (code !== 0) {
+      log(`osascript stderr: ${stderrData}`);
+
+      // Error 1002: "osascript is not allowed to send keystrokes" = ACCESSIBILITY permission
+      if (stderrData.includes('(1002)') || stderrData.includes('not allowed to send keystrokes')) {
+        new Notification({
+          title: 'Accessibility Required',
+          body: 'Please enable Leo in Privacy & Security > Accessibility.'
+        }).show();
+        setTimeout(() => {
+          shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility');
+        }, 1000);
+        return;
+      }
+
+      // Error -1743: Automation permission (Apple Events)
+      if (stderrData.includes('-1743')) {
+        new Notification({
+          title: 'Automation Required',
+          body: 'Please enable Leo for System Events in Privacy & Security > Automation.'
+        }).show();
+        setTimeout(() => {
+          shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Automation');
+        }, 1000);
+        return;
+      }
+
+      new Notification({ title: 'Capture Error', body: 'Copy command failed.' }).show();
       return;
     }
 
-    // 4. Wait briefly for copy
+    // Success path
+    log('AppleScript success');
+
+    // 4. Wait for copy (increased to 800ms)
     setTimeout(async () => {
       const capturedText = clipboard.readText();
+      log(`Clipboard context length: ${capturedText.length}`);
 
-      if (capturedText) {
-        console.log("LEO CAPTURED:", capturedText);
+      if (capturedText && capturedText !== previousText) {
+        log("LEO CAPTURED text");
 
-        // Get Token
-        const token = store.get('authToken');
+        // Get source application metadata
+        const metadata = await getSourceMetadata();
+        log(`Source: ${metadata.appName} | ${metadata.windowTitle} | ${metadata.url || 'no url'}`);
 
-        if (!token) {
-          new Notification({
-            title: 'Leo Capture Failed',
-            body: 'Please log in via the menu bar icon first.'
-          }).show();
-          return;
-        }
-
-        // Send to API
+        // Send to API using extension token (same as Chrome extension)
         try {
+          log('Sending to API');
           const response = await fetch(`${API_URL}/api/capture`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
+              'Authorization': `Bearer ${EXTENSION_TOKEN}`
             },
             body: JSON.stringify({
               type: 'selection',
               content: capturedText,
               source: 'desktop-app',
-              title: 'Quick Capture',
+              title: metadata.windowTitle || 'Quick Capture',
+              url: metadata.url || '',
+              sourceUrl: metadata.url,
+              sourcePageTitle: metadata.windowTitle,
+              device: 'desktop',
+              appName: metadata.appName,
               timestamp: Date.now()
             })
           });
 
+          log(`API response status: ${response.status}`);
+
           if (response.ok) {
+            log('Showing success notification');
             new Notification({
               title: 'Leo Saved',
               body: capturedText.substring(0, 40) + '...'
             }).show();
           } else {
-            console.error('API Error', response.status, response.statusText);
+            log(`API failed with status: ${response.status}`);
             new Notification({
               title: 'Leo Save Failed',
               body: response.status === 401 ? 'Please log in again.' : 'Server error.'
@@ -86,7 +225,7 @@ const performCapture = async () => {
           }
 
         } catch (err) {
-          console.error('API Save Failed', err);
+          log(`API Exception: ${err}`);
           new Notification({
             title: 'Leo Save Failed',
             body: 'Could not connect to server.'
@@ -94,98 +233,15 @@ const performCapture = async () => {
         }
 
       } else {
-        console.log("LEO: No text captured");
+        log("No text captured");
         if (previousText) clipboard.writeText(previousText);
+        new Notification({
+          title: 'Nothing Captured',
+          body: 'Select some text and try again.'
+        }).show();
       }
-    }, 300);
+    }, 800);
   });
-};
-
-const login = () => {
-  // Open the browser to initiate auth flow. 
-  // The web app should capture this, ask user to approve, then redirect to leo://auth?token=...
-  shell.openExternal(`${API_URL}/authorize?source=desktop`);
-};
-
-const logout = () => {
-  store.delete('authToken');
-  updateTrayMenu();
-  new Notification({ title: 'Leo', body: 'Logged out.' }).show();
-};
-
-let recallWindow: BrowserWindow | null = null;
-
-const performRecall = async () => {
-  const token = store.get('authToken');
-  if (!token) {
-    new Notification({ title: 'Leo Recall', body: 'Please log in first.' }).show();
-    return;
-  }
-
-  // Get clipboard content as context
-  const context = clipboard.readText() || '';
-
-  try {
-    const response = await fetch(`${API_URL}/api/recall`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ context, limit: 5 })
-    });
-
-    if (!response.ok) {
-      new Notification({ title: 'Leo Recall', body: 'Failed to fetch memories.' }).show();
-      return;
-    }
-
-    const data = await response.json();
-    const results = data.results || [];
-
-    if (results.length === 0) {
-      new Notification({ title: 'Leo Recall', body: 'Nothing relevant found.' }).show();
-      return;
-    }
-
-    // Store results for the recall window to retrieve
-    store.set('recallResults', results);
-
-    // Create recall popup window - position at top-right
-    if (recallWindow) recallWindow.close();
-
-    // Get screen dimensions for positioning
-    const { screen } = require('electron');
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const { width: screenWidth } = primaryDisplay.workAreaSize;
-
-    recallWindow = new BrowserWindow({
-      width: 420,
-      height: 500,
-      x: screenWidth - 440, // 20px from right edge
-      y: 20, // 20px from top
-      frame: false,
-      transparent: true,
-      alwaysOnTop: true,
-      skipTaskbar: true,
-      visibleOnAllWorkspaces: true, // Appear on current Space without switching
-      webPreferences: {
-        nodeIntegration: true,
-        contextIsolation: false
-      }
-    });
-
-    // Use base64 encoding to preserve UTF-8 characters
-    const htmlContent = buildRecallHTML(results);
-    const base64Html = Buffer.from(htmlContent, 'utf-8').toString('base64');
-    recallWindow.loadURL(`data:text/html;charset=utf-8;base64,${base64Html}`);
-    recallWindow.on('closed', () => { recallWindow = null; });
-    recallWindow.on('blur', () => { recallWindow?.close(); });
-
-  } catch (err) {
-    console.error('Recall failed', err);
-    new Notification({ title: 'Leo Recall', body: 'Could not connect.' }).show();
-  }
 };
 
 const buildRecallHTML = (results: any[]) => {
@@ -318,18 +374,18 @@ const buildRecallHTML = (results: any[]) => {
       </div>
       <script>
         const { shell, clipboard } = require('electron');
-        
+
         function openUrl(url) {
           shell.openExternal(url);
           window.close();
         }
-        
+
         function copyContent(btn, content) {
           clipboard.writeText(content);
           btn.textContent = '✓ Copied!';
           setTimeout(() => window.close(), 500);
         }
-        
+
         function dismiss(itemId, btn) {
           btn.closest('.card').style.opacity = '0.3';
           fetch('https://leo-brain.vercel.app/api/recall', {
@@ -339,11 +395,11 @@ const buildRecallHTML = (results: any[]) => {
           });
           setTimeout(() => btn.closest('.card').remove(), 300);
         }
-        
+
         // Keyboard navigation
         let selected = -1;
         const cards = document.querySelectorAll('.card');
-        
+
         document.addEventListener('keydown', (e) => {
           if (e.key === 'Escape') window.close();
           if (e.key === 'ArrowDown') {
@@ -361,7 +417,7 @@ const buildRecallHTML = (results: any[]) => {
             else copyContent(card.querySelector('.btn:nth-child(1)'), card.dataset.content);
           }
         });
-        
+
         function updateSelection() {
           cards.forEach((c, i) => c.classList.toggle('selected', i === selected));
           if (selected >= 0) cards[selected].scrollIntoView({ block: 'nearest' });
@@ -375,6 +431,7 @@ const buildRecallHTML = (results: any[]) => {
 const escapeHTML = (str: string) => str.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c));
 
 const createTray = () => {
+  log('Creating tray');
   const icon = nativeImage.createFromPath(iconPath);
   const trayIcon = icon.resize({ width: 16, height: 16 });
 
@@ -399,7 +456,99 @@ const updateTrayMenu = () => {
   tray?.setContextMenu(contextMenu);
 };
 
+const login = () => {
+  log('Login initiated');
+  // Open the browser to initiate auth flow.
+  // The web app should capture this, ask user to approve, then redirect to leo://auth?token=...
+  shell.openExternal(`${API_URL}/authorize?source=desktop`);
+};
+
+const logout = () => {
+  log('Logout initiated');
+  store.delete('authToken');
+  updateTrayMenu();
+  new Notification({ title: 'Leo', body: 'Logged out.' }).show();
+};
+
+const performRecall = async () => {
+  log('performRecall called');
+  const token = store.get('authToken');
+  if (!token) {
+    log('Recall failed: No token');
+    new Notification({ title: 'Leo Recall', body: 'Please log in first.' }).show();
+    return;
+  }
+
+  // Get clipboard content as context
+  const context = clipboard.readText() || '';
+
+  try {
+    const response = await fetch(`${API_URL}/api/recall`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ context, limit: 5 })
+    });
+
+    if (!response.ok) {
+      log(`Recall API failed: ${response.status}`);
+      new Notification({ title: 'Leo Recall', body: 'Failed to fetch memories.' }).show();
+      return;
+    }
+
+    const data = await response.json();
+    const results = data.results || [];
+
+    if (results.length === 0) {
+      new Notification({ title: 'Leo Recall', body: 'Nothing relevant found.' }).show();
+      return;
+    }
+
+    // Store results for the recall window to retrieve
+    store.set('recallResults', results);
+
+    // Create recall popup window - position at top-right
+    if (recallWindow) recallWindow.close();
+
+    // Get screen dimensions for positioning
+    const { screen } = require('electron');
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenWidth } = primaryDisplay.workAreaSize;
+
+    recallWindow = new BrowserWindow({
+      width: 420,
+      height: 500,
+      x: screenWidth - 440, // 20px from right edge
+      y: 20, // 20px from top
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      visibleOnAllWorkspaces: true, // Appear on current Space without switching
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false
+      }
+    });
+
+    // Use base64 encoding to preserve UTF-8 characters
+    const htmlContent = buildRecallHTML(results);
+    const base64Html = Buffer.from(htmlContent, 'utf-8').toString('base64');
+    recallWindow.loadURL(`data:text/html;charset=utf-8;base64,${base64Html}`);
+    recallWindow.on('closed', () => { recallWindow = null; });
+    recallWindow.on('blur', () => { recallWindow?.close(); });
+
+  } catch (err) {
+    log(`Recall exception: ${err}`);
+    console.error('Recall failed', err);
+    new Notification({ title: 'Leo Recall', body: 'Could not connect.' }).show();
+  }
+};
+
 const createWindow = () => {
+  log('Creating main window');
   mainWindow = new BrowserWindow({
     width: 600,
     height: 400,
@@ -423,36 +572,53 @@ const createWindow = () => {
 // Handle Deep Link
 app.on('open-url', (event, url) => {
   event.preventDefault();
+  log(`Deep link received: ${url}`);
   console.log("Deep link received:", url);
   // leo://auth?token=XYZ
   if (url.startsWith('leo://auth')) {
     const urlObj = new URL(url);
     const token = urlObj.searchParams.get('token');
     if (token) {
+      log('Token extracted successfully');
       store.set('authToken', token);
       new Notification({ title: 'Leo Connected', body: 'You can now capture memories.' }).show();
       updateTrayMenu();
+
+      // Notify renderer
+      mainWindow?.webContents.send('leo:connection-status', true);
+    } else {
+      log('No token found in deep link');
     }
+  } else {
+    log('Deep link does not start with leo://auth');
   }
 });
 
 app.on('ready', () => {
+  log('App Ready');
   createWindow();
   createTray();
 
+  // TCC Registration (spawn version)
+  const child = spawn('osascript', ['-e', 'tell application "System Events" to get name']);
+  child.on('error', (err) => log(`TCC Reg error: ${err.message}`));
+  child.stderr.on('data', (d) => log(`TCC Reg stderr: ${d}`));
+
   // Capture shortcut
   const retCapture = globalShortcut.register('Command+Shift+E', () => {
-    console.log('Capture Shortcut Triggered');
+    log('Capture Shortcut Triggered');
     performCapture();
   });
-  if (!retCapture) console.log('Capture shortcut registration failed');
+  if (!retCapture) log('Capture shortcut registration FAILED');
+  else log('Capture shortcut registered successfully');
 
   // Recall shortcut
   const retRecall = globalShortcut.register('Command+Shift+Y', () => {
-    console.log('Recall Shortcut Triggered');
+    log('Recall Shortcut Triggered');
     performRecall();
   });
-  if (!retRecall) console.log('Recall shortcut registration failed');
+  if (!retRecall) log('Recall shortcut registration FAILED');
+  else log('Recall shortcut registered successfully');
 
   // IPC handlers for UI buttons
   ipcMain.on('leo:capture', () => performCapture());
@@ -463,9 +629,11 @@ app.on('ready', () => {
   });
   ipcMain.on('leo:login', () => login());
   ipcMain.on('leo:hide', () => mainWindow?.hide());
+  ipcMain.on('leo:quit', () => app.quit());
 });
 
 app.on('will-quit', () => {
+  log('App quitting');
   globalShortcut.unregisterAll();
 });
 

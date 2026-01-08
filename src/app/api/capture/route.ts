@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { items } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 import { logInfo, logError, logWarn } from '@/lib/logger';
 import { generateEmbedding } from '@/lib/embeddings';
 
@@ -76,14 +77,32 @@ export async function POST(request: NextRequest) {
             embedding,
         }).returning({ id: items.id });
 
-        // Fire-and-forget URL enrichment (non-blocking per v2 spec)
+        // Fire-and-forget enrichment (non-blocking)
         if (dbContentType === 'url' && inserted?.id) {
             const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://leo-brain.vercel.app';
-            fetch(`${baseUrl}/api/enrich-url`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ itemId: inserted.id, url: contentToSave })
-            }).catch(() => { }); // Silent failure - enrichment is optional
+
+            // If we have full page content from extension, use it for AI analysis directly
+            // This is better for pages behind login (Reddit, Mem.ai, etc.)
+            if (payload.type === 'page' && payload.content && payload.content.length > 200) {
+                // We still call enrich-url for Tier 1 metadata (favicon, etc.)
+                fetch(`${baseUrl}/api/enrich-url`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ itemId: inserted.id, url: contentToSave })
+                }).catch(() => { });
+
+                // Trigger content analysis
+                processPageContent(inserted.id, payload.content, payload.url).catch(err => {
+                    console.error('Content analysis failed:', err);
+                });
+            } else {
+                // Standard URL enrichment (visits URL)
+                fetch(`${baseUrl}/api/enrich-url`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ itemId: inserted.id, url: contentToSave })
+                }).catch(() => { });
+            }
         }
 
         logInfo({
@@ -105,5 +124,29 @@ export async function POST(request: NextRequest) {
             { error: 'Failed to save capture' },
             { status: 500 }
         );
+    }
+}
+
+import { enrichContentWithKimi } from '@/lib/kimi';
+
+async function processPageContent(itemId: string, content: string, url: string) {
+    try {
+        const aiResult = await enrichContentWithKimi(content, url);
+
+        if (aiResult.topics.length > 0 || aiResult.description) {
+            await db.update(items)
+                .set({
+                    aiSummary: aiResult.description?.slice(0, 200),
+                    aiTopics: aiResult.topics.join(','),
+                    aiIntent: aiResult.intent.join(','),
+                    aiDomain: aiResult.domain,
+                    updatedAt: new Date()
+                })
+                .where(eq(items.id, itemId));
+
+            console.log(`Content analysis complete for ${itemId}: ${aiResult.topics.join(',')}`);
+        }
+    } catch (e) {
+        console.error('Error in processPageContent:', e);
     }
 }

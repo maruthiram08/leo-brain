@@ -22,14 +22,23 @@ chrome.action.onClicked.addListener(async (tab) => {
 // ========== CAPTURE (Cmd+Shift+E) ==========
 async function handleCapture(tab) {
     try {
-        // 1. Inject content script to extract data
+        // Guard against restricted pages
+        if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('edge://') || tab.url.startsWith('about:')) {
+            console.log('Capture not supported on restricted page:', tab.url);
+            return;
+        }
+
+        // 1. Inject content script to extract data (using func for proper return)
         const [result] = await chrome.scripting.executeScript({
             target: { tabId: tab.id },
-            files: ['content.js']
+            func: extractContext
         });
 
-        const payload = result.result;
-        if (!payload) return;
+        const payload = result?.result;
+        if (!payload) {
+            console.log('No payload returned from content extraction');
+            return;
+        }
 
         // 2. Prepare full payload with source context
         const finalPayload = {
@@ -55,14 +64,148 @@ async function handleCapture(tab) {
             // 4. Show success toast
             await chrome.scripting.executeScript({
                 target: { tabId: tab.id },
-                files: ['toast.js']
+                func: showToast
             });
         } else {
             console.error('Capture failed:', response.status);
+            // Show error toast
+            await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: showErrorToast
+            });
         }
     } catch (err) {
         console.error('Capture error:', err);
     }
+}
+
+// Injected function to extract context
+function extractContext() {
+    const selection = window.getSelection()?.toString().trim();
+    const activeElement = document.activeElement;
+    const pageUrl = window.location.href;
+    const pageTitle = document.title;
+
+    // 1. Text Selection
+    if (selection && selection.length > 0) {
+        return {
+            type: 'selection',
+            content: selection,
+            url: pageUrl,
+            title: pageTitle
+        };
+    }
+
+    // 2. Focused Image
+    if (activeElement && activeElement.tagName === 'IMG') {
+        return {
+            type: 'image',
+            content: null,
+            url: activeElement.src,
+            title: pageTitle
+        };
+    }
+
+    // 3. Page Context (Default)
+    // Extract full page content for AI summarization
+    let pageContent = '';
+    try {
+        const article = document.querySelector('article')
+            || document.querySelector('[role="main"]')
+            || document.querySelector('main')
+            || document.querySelector('.content')
+            || document.querySelector('#content')
+            || document.body;
+
+        if (article) {
+            pageContent = article.innerText
+                .replace(/\s+/g, ' ')
+                .trim()
+                .slice(0, 15000);
+        }
+    } catch (e) {
+        console.error('Failed to extract page content:', e);
+    }
+
+    return {
+        type: 'page',
+        content: pageContent,
+        url: pageUrl,
+        title: pageTitle
+    };
+}
+
+// Injected function to show success toast
+function showToast() {
+
+    const toastId = 'leo-extension-toast';
+    const existing = document.getElementById(toastId);
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = toastId;
+    toast.innerHTML = '✅ <b>Saved to Leo</b>';
+
+    Object.assign(toast.style, {
+        position: 'fixed',
+        bottom: '24px',
+        right: '24px',
+        backgroundColor: '#0f172a',
+        color: '#4ade80',
+        padding: '12px 24px',
+        borderRadius: '12px',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        fontSize: '14px',
+        fontWeight: '500',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+        zIndex: '2147483647',
+        opacity: '0',
+        transition: 'all 0.2s ease-in-out',
+        pointerEvents: 'none'
+    });
+
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => { toast.style.opacity = '1'; });
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 200);
+    }, 2000);
+}
+
+// Injected function to show error toast
+function showErrorToast() {
+    const toastId = 'leo-extension-toast';
+    const existing = document.getElementById(toastId);
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = toastId;
+    toast.textContent = '❌ Failed to save';
+
+    Object.assign(toast.style, {
+        position: 'fixed',
+        bottom: '24px',
+        right: '24px',
+        backgroundColor: '#1e1e1e',
+        color: '#ef4444',
+        padding: '12px 24px',
+        borderRadius: '12px',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        fontSize: '14px',
+        fontWeight: '500',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+        zIndex: '2147483647',
+        opacity: '0',
+        transition: 'all 0.2s ease-in-out',
+        pointerEvents: 'none'
+    });
+
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => { toast.style.opacity = '1'; });
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 200);
+    }, 2000);
 }
 
 // ========== RECALL (Cmd+Shift+Y) ==========
@@ -170,26 +313,8 @@ function injectRecallOverlay(results, cursorPosition) {
         return;
     }
 
-    // Determine position (near cursor or selection, fallback to top-right)
-    let positionStyle = 'top: 20px; right: 20px;';
-    if (cursorPosition && cursorPosition.x && cursorPosition.y) {
-        // Position near cursor, but keep within viewport
-        const x = Math.min(cursorPosition.x, window.innerWidth - 420);
-        const y = Math.min(cursorPosition.y + 20, window.innerHeight - 300);
-        positionStyle = `top: ${y}px; left: ${x}px;`;
-    } else {
-        // Try to get selection position ONLY if text is actually selected
-        const selection = window.getSelection();
-        if (selection && !selection.isCollapsed && selection.toString().trim().length > 0 && selection.rangeCount > 0) {
-            const range = selection.getRangeAt(0);
-            const rect = range.getBoundingClientRect();
-            if (rect.width > 0) {
-                const x = Math.min(rect.left, window.innerWidth - 420);
-                const y = Math.min(rect.bottom + 10, window.innerHeight - 300);
-                positionStyle = `top: ${y}px; left: ${x}px;`;
-            }
-        }
-    }
+    // Fixed position: top-right of viewport
+    const positionStyle = 'top: 20px; right: 20px;';
 
     // Create styles
     const style = document.createElement('style');

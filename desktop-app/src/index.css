@@ -1,22 +1,25 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #0a0a0a;
-  --color-foreground: #ededed;
-  --font-sans: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --color-background: #1e1e1e;
+  /* Dark macOS panel gray */
+  --color-foreground: #e0e0e0;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segeo UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
   background-color: var(--color-background);
   color: var(--color-foreground);
+  overflow: hidden;
+  /* Prevent scrolling */
+  -webkit-font-smoothing: antialiased;
 }
 
-#app {
+#root {
   width: 100%;
-  height: 100vh;
+  height: 100%;
 }

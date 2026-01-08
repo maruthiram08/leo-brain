@@ -10,7 +10,23 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
-    icon: './src/assets/Leo', // .icns for macOS (extension auto-added)
+    icon: './src/assets/Leo',
+    appBundleId: 'com.maruthi.leo',
+    osxSign: {
+      identity: '-', // Self-sign (ad-hoc) to enforce Bundle ID
+      entitlements: './entitlements.plist',
+      'entitlements-inherit': './entitlements.plist',
+    },
+    extendInfo: {
+      NSAppleEventsUsageDescription: 'Leo needs to control System Events to copy selected text.',
+      NSAccessibilityUsageDescription: 'Leo needs accessibility access to capture text from other applications.',
+    },
+    protocols: [
+      {
+        name: 'Leo Protocol',
+        schemes: ['leo']
+      }
+    ]
   },
   rebuildConfig: {},
   makers: [

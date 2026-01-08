@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('leo', {
     logout: () => ipcRenderer.send('leo:logout'),
     login: () => ipcRenderer.send('leo:login'),
     hide: () => ipcRenderer.send('leo:hide'),
+    quit: () => ipcRenderer.send('leo:quit'),
     onConnectionStatus: (callback: (connected: boolean) => void) => {
         ipcRenderer.on('leo:connection-status', (_event, connected) => callback(connected));
     }
