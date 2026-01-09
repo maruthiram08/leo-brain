@@ -43,60 +43,59 @@ export async function POST(request: NextRequest) {
             dbContentType = 'url';
         }
 
-        const contentToSave = payload.type === 'image' || payload.type === 'page'
+        const contentToSave = payload.type === 'page'
             ? payload.url
-            : payload.content || payload.url; // Fallback to URL if content empty (e.g. page capture)
+            : payload.type === 'image'
+                ? '(Processing Image...)' // Do not save base64 to DB
+                : payload.content || payload.url;
 
         if (!contentToSave) {
             return NextResponse.json({ error: 'No content to save' }, { status: 400 });
         }
 
-        // Use a dedicated "extension" user ID or similar for now, 
-        // or we could pass a userId in the payload if we had user auth in extension.
-        // Spec says "static token for MVP", implies single user or shared token.
-        // For MVP, we'll associate it with a default extension user ID or similar, 
-        // BUT since we don't have multi-user yet, we can just use "extension-user".
         const userId = "extension-user";
-
-        // Generate embedding (asynchronously or check await?)
-        // For MVP, await it. Speed is less critical than consistency.
         let embedding: number[] | null = null;
-        try {
-            // Context strategy: Content + Type
-            const context = `${contentToSave} ${dbContentType === 'url' ? 'URL' : 'Note'}`;
-            embedding = await generateEmbedding(context);
-        } catch (e) {
-            console.error('Failed to generate embedding during capture:', e);
-            // Proceed without embedding (will be null)
+
+        // Skip embedding for initial image placeholder
+        if (payload.type !== 'image') {
+            try {
+                const context = `${contentToSave} ${dbContentType === 'url' ? 'URL' : 'Note'}`;
+                embedding = await generateEmbedding(context);
+            } catch (e) {
+                console.error('Failed to generate embedding during capture:', e);
+            }
         }
 
         const [inserted] = await db.insert(items).values({
-            telegramUserId: userId, // We're using this field for generic user ID for now
+            telegramUserId: userId,
             contentType: dbContentType,
             content: contentToSave,
             embedding,
         }).returning({ id: items.id });
 
-        // Fire-and-forget enrichment (non-blocking)
-        if (dbContentType === 'url' && inserted?.id) {
+        // Handle Image Processing (Blocking)
+        if (payload.type === 'image' && payload.content) {
+            // We await this so the user sees "Leo Saved" only after OCR is done (3-5s)
+            // This ensures the DB is updated with text before the user tries to recall it.
+            await processImageContent(inserted.id, payload.content);
+        }
+
+        // Fire-and-forget enrichment (non-blocking) for URLs
+        if (dbContentType === 'url' && payload.type !== 'image' && inserted?.id) {
             const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://leo-brain.vercel.app';
 
             // If we have full page content from extension, use it for AI analysis directly
-            // This is better for pages behind login (Reddit, Mem.ai, etc.)
             if (payload.type === 'page' && payload.content && payload.content.length > 200) {
-                // We still call enrich-url for Tier 1 metadata (favicon, etc.)
                 fetch(`${baseUrl}/api/enrich-url`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ itemId: inserted.id, url: contentToSave })
                 }).catch(() => { });
 
-                // Trigger content analysis
                 processPageContent(inserted.id, payload.content, payload.url).catch(err => {
                     console.error('Content analysis failed:', err);
                 });
             } else {
-                // Standard URL enrichment (visits URL)
                 fetch(`${baseUrl}/api/enrich-url`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -127,7 +126,7 @@ export async function POST(request: NextRequest) {
     }
 }
 
-import { enrichContentWithAi } from '@/lib/ai';
+import { enrichContentWithAi, enrichImageWithAi } from '@/lib/ai';
 
 async function processPageContent(itemId: string, content: string, url: string) {
     try {
@@ -148,5 +147,28 @@ async function processPageContent(itemId: string, content: string, url: string) 
         }
     } catch (e) {
         console.error('Error in processPageContent:', e);
+    }
+}
+
+async function processImageContent(itemId: string, base64Image: string) {
+    try {
+        console.log(`Processing image for item ${itemId}`);
+        const aiResult = await enrichImageWithAi(base64Image);
+
+        await db.update(items)
+            .set({
+                // Replace the temporary content with the OCR text
+                content: aiResult.extractedText || '(Image with no readable text)',
+                aiSummary: aiResult.description?.slice(0, 200),
+                aiTopics: aiResult.topics.join(','),
+                aiDomain: 'content', // generic
+                contentType: 'note', // Convert from 'image' to 'note' since we just have text now
+                updatedAt: new Date()
+            })
+            .where(eq(items.id, itemId));
+
+        console.log(`Image analysis complete for ${itemId}: ${aiResult.topics.join(',')}`);
+    } catch (e) {
+        console.error('Error in processImageContent:', e);
     }
 }

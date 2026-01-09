@@ -187,3 +187,78 @@ Respond with ONLY the JSON.`;
         domain: 'unknown'
     };
 }
+
+export interface ImageEnrichmentResult {
+    extractedText: string;
+    description: string;
+    topics: string[];
+}
+
+/**
+ * Analyze an image using OpenAI Vision (GPT-4o)
+ * Extracts text (OCR) and generates a summary.
+ * 
+ * @param base64Image - The image data as a base64 string (including data:image/jpeg;base64,... prefix)
+ */
+export async function enrichImageWithAi(base64Image: string): Promise<ImageEnrichmentResult> {
+    const client = getAiClient();
+
+    const prompt = `Analyze this image. 
+    1. Transcribe any text visible in the image EXACTLY (OCR).
+    2. Provide a brief 1-sentence description of the visual content.
+    3. Generate 3-5 generic topics for categorization.
+
+    Return ONLY a JSON object with:
+    {
+      "extractedText": "Full transcribed text...",
+      "description": "Visual description...",
+      "topics": ["topic1", "topic2"]
+    }
+    `;
+
+    try {
+        const completion = await client.chat.completions.create({
+            model: 'gpt-4o-mini', // 4o-mini supports vision and is cheaper
+            max_tokens: 1000,
+            messages: [
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: prompt },
+                        {
+                            type: 'image_url',
+                            image_url: {
+                                url: base64Image,
+                                detail: 'high'
+                            }
+                        }
+                    ],
+                },
+            ],
+        });
+
+        const text = completion.choices[0]?.message?.content || '';
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+
+        if (jsonMatch) {
+            try {
+                const parsed = JSON.parse(jsonMatch[0]);
+                return {
+                    extractedText: parsed.extractedText || '',
+                    description: parsed.description || '',
+                    topics: Array.isArray(parsed.topics) ? parsed.topics : []
+                };
+            } catch (e) {
+                console.error('Failed to parse AI Vision response:', e);
+            }
+        }
+    } catch (error) {
+        console.error('AI Vision enrichment failed:', error);
+    }
+
+    return {
+        extractedText: '',
+        description: 'Image analysis failed',
+        topics: []
+    };
+}
