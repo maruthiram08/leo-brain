@@ -5,12 +5,16 @@ let aiClient: OpenAI | null = null;
 function getAiClient(): OpenAI {
     if (!aiClient) {
         const apiKey = process.env.OPENAI_API_KEY;
+        console.log('[AI_DEBUG] Initializing OpenAI Client. Key present?', !!apiKey);
+        if (apiKey) {
+            console.log('[AI_DEBUG] Key starts with:', apiKey.slice(0, 5) + '...');
+        }
         if (!apiKey) {
+            console.error('[AI_ERROR] OPENAI_API_KEY is missing via process.env');
             throw new Error('OPENAI_API_KEY environment variable is not set');
         }
         aiClient = new OpenAI({
             apiKey: apiKey,
-            // baseURL: 'https://api.openai.com/v1' // Default
         });
     }
     return aiClient;
