@@ -3,11 +3,11 @@ import { db } from '@/lib/db';
 import { items } from '@/lib/db/schema';
 import { eq, and, isNull, or } from 'drizzle-orm';
 import { enrichUrlWithGemini, extractDomain } from '@/lib/gemini';
-import { enrichUrlWithKimi } from '@/lib/kimi';
+import { enrichUrlWithAi } from '@/lib/ai';
 
 /**
  * POST /api/admin/enrich
- * Enriches pending URL items with metadata using Kimi-k2 (primary) or Gemini (fallback)
+ * Enriches pending URL items with metadata using AI (primary) or Gemini (fallback)
  */
 export async function POST(request: NextRequest) {
     const startTime = Date.now();
@@ -47,9 +47,9 @@ export async function POST(request: NextRequest) {
             try {
                 let enrichment;
 
-                // Try Kimi-k2 first (better web scraping)
+                // Try AI first (better web scraping)
                 try {
-                    enrichment = await enrichUrlWithKimi(item.content);
+                    enrichment = await enrichUrlWithAi(item.content);
                     // If Kimi returns fallback (just hostname), try Gemini
                     if (enrichment.title === new URL(item.content).hostname) {
                         throw new Error('Kimi returned fallback');

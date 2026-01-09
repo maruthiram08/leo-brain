@@ -3,13 +3,13 @@ import { db } from '@/lib/db';
 import { items } from '@/lib/db/schema';
 import { eq, and, isNull, or } from 'drizzle-orm';
 import { enrichUrl } from '@/lib/url-enrichment';
-import { enrichUrlWithKimi } from '@/lib/kimi';
+import { enrichUrlWithAi } from '@/lib/ai';
 
 /**
  * POST /api/admin/enrich-v2
  * Backfill enrichment for existing URLs using two-tier approach:
  * - Tier 1: Cheerio (fast metadata)
- * - Tier 2: Kimi AI (summary + semantic tags) with fallback
+ * - Tier 2: AI (summary + semantic tags) with fallback
  */
 export async function POST(request: NextRequest) {
     const startTime = Date.now();
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
                 // ===== TIER 2: AI + Fallback =====
                 if (tier === '2') {
                     try {
-                        const kimiResult = await enrichUrlWithKimi(item.content);
+                        const kimiResult = await enrichUrlWithAi(item.content);
                         const hasValidTags = kimiResult.topics.length > 0;
 
                         if (hasValidTags) {
