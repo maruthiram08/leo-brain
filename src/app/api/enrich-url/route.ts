@@ -40,14 +40,17 @@ export async function POST(request: NextRequest) {
             .where(eq(items.id, itemId));
 
         // ===== TIER 2: AI Summary + Semantic Tags (async, non-blocking) =====
-        generateAISemanticTags(itemId, url, enrichment.enrichedTitle, enrichment.enrichedDescription).catch(err => {
+        // in Serverless, we MUST await this or use waitUntil. For now, await it to guarantee execution.
+        try {
+            await generateAISemanticTags(itemId, url, enrichment.enrichedTitle, enrichment.enrichedDescription);
+        } catch (err) {
             console.error('AI semantic tagging failed:', err);
-        });
+        }
 
         return NextResponse.json({
             success: true,
             tier1: enrichment.enrichmentStatus,
-            message: 'Tier 1 enrichment complete, Tier 2 (AI) running in background'
+            message: 'Enrichment complete (Tier 1 & Tier 2)'
         });
 
     } catch (error) {
