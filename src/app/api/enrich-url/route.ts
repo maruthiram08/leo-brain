@@ -75,18 +75,30 @@ async function generateAISemanticTags(
     try {
         const aiResult = await enrichUrlWithAi(url);
         const hasValidTags = aiResult.topics.length > 0;
+        const hasValidMetadata = !!aiResult.title && aiResult.title.length > 0;
 
-        if (hasValidTags) {
+        let updateData: any = {
+            aiSummary: aiResult.description?.slice(0, 200),
+            aiTopics: aiResult.topics.join(','),
+            aiIntent: aiResult.intent.join(','),
+            aiDomain: aiResult.domain,
+            updatedAt: new Date()
+        };
+
+        // Fallback: If Tier 1 failed (no title) but AI succeeded, use AI metadata
+        if (!title && hasValidMetadata) {
+            console.log(`[Enrichment] Tier 1 failed, but AI recovered title for ${itemId}`);
+            updateData.enrichedTitle = aiResult.title.slice(0, 200);
+            updateData.enrichedDescription = aiResult.description.slice(0, 240);
+            updateData.enrichmentStatus = 'success'; // Rescue the status
+            updateData.enrichmentContentType = aiResult.contentType !== 'unknown' ? aiResult.contentType : 'article';
+        }
+
+        if (hasValidTags || hasValidMetadata) {
             await db.update(items)
-                .set({
-                    aiSummary: aiResult.description?.slice(0, 200),
-                    aiTopics: aiResult.topics.join(','),
-                    aiIntent: aiResult.intent.join(','),
-                    aiDomain: aiResult.domain,
-                    updatedAt: new Date()
-                })
+                .set(updateData)
                 .where(eq(items.id, itemId));
-            console.log(`AI tags for ${itemId}: ${aiResult.topics.join(',')}`);
+            console.log(`AI enriched ${itemId}: ${aiResult.topics.join(',')}`);
         } else {
             const fallback = generateFallbackTags(url, title, description);
             await db.update(items)
