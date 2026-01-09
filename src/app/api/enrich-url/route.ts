@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { items } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { enrichUrl } from '@/lib/url-enrichment';
-import { enrichUrlWithKimi } from '@/lib/kimi';
+import { enrichUrlWithAi } from '@/lib/ai';
 
 /**
  * POST /api/enrich-url
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Tier 2: Generate AI summary and semantic tags using Kimi
+ * Tier 2: Generate AI summary and semantic tags using OpenAI
  * Falls back to smart heuristic tag generation if AI returns empty
  */
 async function generateAISemanticTags(
@@ -70,7 +70,7 @@ async function generateAISemanticTags(
     description: string | null
 ): Promise<void> {
     try {
-        const aiResult = await enrichUrlWithKimi(url);
+        const aiResult = await enrichUrlWithAi(url);
         const hasValidTags = aiResult.topics.length > 0;
 
         if (hasValidTags) {

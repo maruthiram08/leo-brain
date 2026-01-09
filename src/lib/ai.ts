@@ -1,23 +1,22 @@
 import OpenAI from 'openai';
 
-let kimiClient: OpenAI | null = null;
+let aiClient: OpenAI | null = null;
 
-function getKimiClient(): OpenAI {
-    if (!kimiClient) {
-        const apiKey = process.env.KIMI_API_KEY;
+function getAiClient(): OpenAI {
+    if (!aiClient) {
+        const apiKey = process.env.OPENAI_API_KEY;
         if (!apiKey) {
-            throw new Error('KIMI_API_KEY environment variable is not set');
+            throw new Error('OPENAI_API_KEY environment variable is not set');
         }
-        // Kimi-k2 uses OpenAI-compatible API
-        kimiClient = new OpenAI({
+        aiClient = new OpenAI({
             apiKey: apiKey,
-            baseURL: 'https://api.moonshot.cn/v1'
+            // baseURL: 'https://api.openai.com/v1' // Default
         });
     }
-    return kimiClient;
+    return aiClient;
 }
 
-export interface KimiEnrichmentResult {
+export interface EnrichmentResult {
     title: string;
     description: string;
     contentType: 'article' | 'video' | 'tweet' | 'doc' | 'unknown';
@@ -27,11 +26,11 @@ export interface KimiEnrichmentResult {
 }
 
 /**
- * Enrich a URL using Kimi-k2 with web browsing capability
+ * Enrich a URL using AI
  * Generates structured semantic tags for hot/cold recall matching
  */
-export async function enrichUrlWithKimi(url: string): Promise<KimiEnrichmentResult> {
-    const client = getKimiClient();
+export async function enrichUrlWithAi(url: string): Promise<EnrichmentResult> {
+    const client = getAiClient();
 
     const prompt = `Visit and analyze this URL, then extract metadata AND semantic tags:
 ${url}
@@ -55,7 +54,7 @@ Respond with ONLY the JSON, no other text.`;
 
     try {
         const completion = await client.chat.completions.create({
-            model: 'kimi-k2-0711-preview',
+            model: 'gpt-4o-mini',
             messages: [
                 {
                     role: 'system',
@@ -88,7 +87,7 @@ Respond with ONLY the JSON, no other text.`;
             };
         }
     } catch (error) {
-        console.error('Kimi enrichment failed:', error);
+        console.error('AI enrichment failed:', error);
     }
 
     // Fallback
@@ -103,17 +102,16 @@ Respond with ONLY the JSON, no other text.`;
 }
 
 /**
- * Enrich raw text content using Kimi
+ * Enrich raw text content using AI
  * Used when the extension captures full page text (e.g. behind login)
  * 
  * @param content - Full text content of the page (will be truncated to ~15k chars)
  * @param sourceUrl - Origin URL for context
  */
-export async function enrichContentWithKimi(content: string, sourceUrl: string): Promise<KimiEnrichmentResult> {
-    const client = getKimiClient();
+export async function enrichContentWithAi(content: string, sourceUrl: string): Promise<EnrichmentResult> {
+    const client = getAiClient();
 
     // Limit content to ~15k characters to fit within prompt safely (standard context window)
-    // Kimi supports long context but we want fast responses
     const safeContent = content.slice(0, 15000);
 
     const prompt = `Analyze this webpage content from ${sourceUrl} and extract metadata AND semantic tags:
@@ -136,7 +134,7 @@ Respond with ONLY the JSON.`;
 
     try {
         const completion = await client.chat.completions.create({
-            model: 'kimi-k2-0711-preview',
+            model: 'gpt-4o-mini',
             // Increase temperature slightly for better creativity in summarization
             temperature: 0.3,
             messages: [
@@ -169,11 +167,11 @@ Respond with ONLY the JSON.`;
                     domain: typeof parsed.domain === 'string' ? parsed.domain.toLowerCase() : 'unknown'
                 };
             } catch (e) {
-                console.error('Failed to parse Kimi JSON response:', e);
+                console.error('Failed to parse AI JSON response:', e);
             }
         }
     } catch (error) {
-        console.error('Kimi content enrichment failed:', error);
+        console.error('AI content enrichment failed:', error);
     }
 
     return {

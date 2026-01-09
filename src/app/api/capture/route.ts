@@ -127,11 +127,11 @@ export async function POST(request: NextRequest) {
     }
 }
 
-import { enrichContentWithKimi } from '@/lib/kimi';
+import { enrichContentWithAi } from '@/lib/ai';
 
 async function processPageContent(itemId: string, content: string, url: string) {
     try {
-        const aiResult = await enrichContentWithKimi(content, url);
+        const aiResult = await enrichContentWithAi(content, url);
 
         if (aiResult.topics.length > 0 || aiResult.description) {
             await db.update(items)
