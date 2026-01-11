@@ -71,7 +71,7 @@ export default async function OnboardingPage() {
                                     <li>Download source code</li>
                                     <li>Go to <code className="bg-black/30 px-1 rounded">chrome://extensions</code></li>
                                     <li>Enable "Developer mode"</li>
-                                    <li>"Load unpacked" -> Select <code className="bg-black/30 px-1 rounded">extension</code> folder</li>
+                                    <li>"Load unpacked" &gt; Select <code className="bg-black/30 px-1 rounded">extension</code> folder</li>
                                 </ol>
                             </div>
                         </div>

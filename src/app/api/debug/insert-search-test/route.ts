@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server';
 export async function POST() {
     try {
         await db.insert(items).values({
-            telegramUserId: 'debug-user',
+            userId: 'debug-user',
             content: 'https://investopedia.com/algorithmic-trading',
             contentType: 'url',
             enrichedTitle: 'Understanding Algorithmic Trading Strategies',

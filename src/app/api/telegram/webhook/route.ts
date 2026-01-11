@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
                     }
 
                     await db.insert(items).values({
-                        telegramUserId: userId,
+                        userId: userId,
                         contentType,
                         content,
                         embedding,
