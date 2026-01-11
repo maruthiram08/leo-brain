@@ -17,15 +17,39 @@ interface CapturePayload {
     device: string;
 }
 
+import { verifyAppToken } from '@/lib/auth';
+import { auth } from '@clerk/nextjs/server';
+
 export async function POST(request: NextRequest) {
     const startTime = Date.now();
 
     try {
-        // Auth Check
-        const authHeader = request.headers.get('Authorization');
-        if (!EXTENSION_TOKEN || authHeader !== `Bearer ${EXTENSION_TOKEN}`) {
-            logWarn({ event: 'capture_unauthorized', ip: request.headers.get('x-forwarded-for') ?? 'unknown' });
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        let userId = 'extension-user';
+
+        // 1. Try Clerk Auth (Web App)
+        const { userId: clerkUserId } = await auth();
+        if (clerkUserId) {
+            userId = clerkUserId;
+        } else {
+            // 2. Try App Token (New Desktop Auth)
+            const authHeader = request.headers.get('Authorization');
+            const token = authHeader?.replace('Bearer ', '');
+
+            if (token) {
+                const appUserId = await verifyAppToken(token);
+                if (appUserId) {
+                    userId = appUserId;
+                } else if (EXTENSION_TOKEN && token === EXTENSION_TOKEN) {
+                    // 3. Fallback to Extension Token (Legacy)
+                    // Allows existing clients to work until migrated
+                    userId = 'extension-user';
+                } else {
+                    logWarn({ event: 'capture_unauthorized', ip: request.headers.get('x-forwarded-for') ?? 'unknown' });
+                    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+                }
+            } else {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            }
         }
 
         const payload: CapturePayload = await request.json();
@@ -53,7 +77,6 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'No content to save' }, { status: 400 });
         }
 
-        const userId = "extension-user";
         let embedding: number[] | null = null;
 
         // Skip embedding for initial image placeholder
@@ -67,7 +90,7 @@ export async function POST(request: NextRequest) {
         }
 
         const [inserted] = await db.insert(items).values({
-            telegramUserId: userId,
+            userId: userId,
             contentType: dbContentType,
             content: contentToSave,
             embedding,

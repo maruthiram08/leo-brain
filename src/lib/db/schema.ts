@@ -4,8 +4,8 @@ import { sql } from 'drizzle-orm';
 export const items = pgTable('items', {
     id: uuid('id').primaryKey().defaultRandom(),
 
-    // Telegram user identifier
-    telegramUserId: text('telegram_user_id').notNull(),
+    // Clerk User ID or Legacy Telegram ID
+    userId: text('user_id').notNull(),
 
     // Content type for future extensibility
     contentType: text('content_type').notNull().default('text'), // 'text' | 'url' | 'file'

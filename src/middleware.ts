@@ -1,32 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { verifySession } from '@/lib/auth';
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-// Routes that require authentication
-const protectedRoutes = ['/inbox', '/archive'];
-const publicRoutes = ['/login'];
+const isProtectedRoute = createRouteMatcher([
+    '/stream(.*)',
+    '/inbox(.*)',
+    '/archive(.*)',
+    '/authorize(.*)',
+    '/' // Root redirects to stream, so protect it to force login before redirect logic runs
+]);
 
-export async function middleware(request: NextRequest) {
-    const path = request.nextUrl.pathname;
-    const isProtectedRoute = protectedRoutes.some(route => path.startsWith(route));
-    const isPublicRoute = publicRoutes.some(route => path.startsWith(route));
-
-    // Get session token from cookie
-    const sessionToken = request.cookies.get('leo_session')?.value;
-    const isAuthenticated = sessionToken ? await verifySession(sessionToken) : false;
-
-    // Redirect to login if accessing protected route without auth
-    if (isProtectedRoute && !isAuthenticated) {
-        return NextResponse.redirect(new URL('/login', request.url));
+export default clerkMiddleware(async (auth, req) => {
+    if (isProtectedRoute(req)) {
+        await auth.protect();
     }
-
-    // Redirect to inbox if accessing login while authenticated
-    if (isPublicRoute && isAuthenticated) {
-        return NextResponse.redirect(new URL('/inbox', request.url));
-    }
-
-    return NextResponse.next();
-}
+});
 
 export const config = {
-    matcher: ['/inbox/:path*', '/archive/:path*', '/login'],
+    matcher: [
+        // Skip Next.js internals and all static files, unless found in search params
+        "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+        // Always run for API routes
+        "/(api|trpc)(.*)",
+    ],
 };

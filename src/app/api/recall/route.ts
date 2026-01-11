@@ -3,6 +3,10 @@ import { db } from '@/lib/db';
 import { items } from '@/lib/db/schema';
 import { eq, desc, and, sql, getTableColumns } from 'drizzle-orm';
 import { generateEmbedding } from '@/lib/embeddings';
+import { auth } from '@clerk/nextjs/server';
+import { verifyAppToken } from '@/lib/auth';
+
+const EXTENSION_TOKEN = process.env.EXTENSION_TOKEN;
 
 // Vector SQL helper
 function toSql(embedding: number[]): string {
@@ -82,18 +86,36 @@ function calculateTagOverlap(contextTags: string[], itemTopics: string | null): 
     return minTags > 0 ? matches / minTags : 0;
 }
 
-/**
- * POST /api/recall
- * Earned Recall - Surface relevant past events based on context
- * 
- * Request body:
- * - context: The context to match against (selected text, URL, or clipboard)
- * - contextType: 'text' | 'url'
- * 
- * Returns: MAX 2 most relevant events, or empty if nothing is relevant
- */
 export async function POST(request: NextRequest) {
     try {
+        let userId = 'extension-user';
+
+
+
+        // 1. Try Clerk Auth
+        const { userId: clerkUserId } = await auth();
+        if (clerkUserId) {
+            userId = clerkUserId;
+        } else {
+            // 2. Try App Token (New Desktop Auth)
+            const authHeader = request.headers.get('Authorization');
+            const token = authHeader?.replace('Bearer ', '');
+
+            if (token) {
+                const appUserId = await verifyAppToken(token);
+                if (appUserId) {
+                    userId = appUserId;
+                } else if (EXTENSION_TOKEN && token === EXTENSION_TOKEN) {
+                    // 3. Fallback to Extension Token (Legacy)
+                    userId = 'extension-user';
+                } else {
+                    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+                }
+            } else {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            }
+        }
+
         const body = await request.json();
         const { context, contextType } = body;
 
@@ -127,6 +149,7 @@ export async function POST(request: NextRequest) {
                 .where(
                     and(
                         eq(items.isArchived, false),
+                        eq(items.userId, userId),
                         sql`${items.embedding} IS NOT NULL`,
                         sql`${items.dismissCount} < 50`
                     )

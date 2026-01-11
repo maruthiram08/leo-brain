@@ -7,6 +7,7 @@ import { WorkingSet } from '@/components/WorkingSet';
 import { StreamTimeline } from '@/components/StreamTimeline';
 import { ViewToggle } from '@/components/ViewToggle';
 import { SearchBar } from '@/components/SearchBar';
+import { SignOutButton } from '@clerk/nextjs';
 
 export default function StreamPage() {
     const [streamItems, setStreamItems] = useState<Item[]>([]);
@@ -72,11 +73,6 @@ export default function StreamPage() {
         fetchItems();
     }, [fetchItems]);
 
-    const handleLogout = async () => {
-        await fetch('/api/auth/logout', { method: 'POST' });
-        router.push('/login');
-    };
-
     return (
         <div className="min-h-screen bg-[#0f172a] text-slate-300">
             {/* Minimal Header */}
@@ -88,12 +84,11 @@ export default function StreamPage() {
                         </div>
                         <ViewToggle />
                     </div>
-                    <button
-                        onClick={handleLogout}
-                        className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
-                    >
-                        Logout
-                    </button>
+                    <SignOutButton>
+                        <button className="text-xs text-slate-600 hover:text-slate-400 transition-colors">
+                            Logout
+                        </button>
+                    </SignOutButton>
                 </div>
             </header>
 
@@ -164,4 +159,3 @@ export default function StreamPage() {
         </div>
     );
 }
-

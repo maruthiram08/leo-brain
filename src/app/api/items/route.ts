@@ -2,9 +2,15 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { items, timeline_chapters } from '@/lib/db/schema';
 import { desc, eq, and } from 'drizzle-orm';
+import { auth } from '@clerk/nextjs/server';
 
 export async function GET(request: Request) {
     try {
+        const { userId } = await auth();
+        if (!userId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
         const { searchParams } = new URL(request.url);
         const showArchived = searchParams.get('archived') === 'true';
 
@@ -15,7 +21,10 @@ export async function GET(request: Request) {
             workingSet = await db
                 .select()
                 .from(items)
-                .where(eq(items.isArchived, false))
+                .where(and(
+                    eq(items.isArchived, false),
+                    eq(items.userId, userId)
+                ))
                 .orderBy(desc(items.importanceScore), desc(items.createdAt))
                 .limit(7);
         }
@@ -26,7 +35,10 @@ export async function GET(request: Request) {
         let streamQuery = db
             .select()
             .from(items)
-            .where(eq(items.isArchived, showArchived))
+            .where(and(
+                eq(items.isArchived, showArchived),
+                eq(items.userId, userId)
+            ))
             .orderBy(desc(items.createdAt))
             .limit(100); // Pagination later
 
@@ -35,7 +47,7 @@ export async function GET(request: Request) {
         // Filter out working set items from stream to avoid dupes in UI
         const filteredStream = stream.filter(item => !workingSetIds.includes(item.id));
 
-        // 3. Fetch Chapters
+        // 3. Fetch Chapters (TODO: Add user filter to chapters too when schema updated)
         const chapters = await db
             .select()
             .from(timeline_chapters)

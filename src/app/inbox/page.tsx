@@ -8,6 +8,7 @@ import { ItemCard } from '@/components/ItemCard';
 import { SearchBar } from '@/components/SearchBar';
 import { ViewToggle } from '@/components/ViewToggle';
 import Link from 'next/link';
+import { SignOutButton } from '@clerk/nextjs';
 
 export default function InboxPage() {
     const [items, setItems] = useState<Item[]>([]);
@@ -76,11 +77,6 @@ export default function InboxPage() {
         fetchItems();
     }, [fetchItems]);
 
-    const handleLogout = async () => {
-        await fetch('/api/auth/logout', { method: 'POST' });
-        router.push('/login');
-    };
-
     const handleArchive = (archivedId: string) => {
         setItems(prevItems => prevItems.filter(item => item.id !== archivedId));
     };
@@ -101,12 +97,13 @@ export default function InboxPage() {
                             <ViewToggle />
                         </div>
                     </div>
-                    <button
-                        onClick={handleLogout}
-                        className="text-sm text-slate-400 hover:text-white transition-colors"
-                    >
-                        Logout
-                    </button>
+                    <SignOutButton>
+                        <button
+                            className="text-sm text-slate-400 hover:text-white transition-colors"
+                        >
+                            Logout
+                        </button>
+                    </SignOutButton>
                 </div>
             </header>
 

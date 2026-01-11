@@ -108,3 +108,42 @@ npm run build
 ## License
 
 Private - All rights reserved.
+
+## Desktop App Build & Distribution
+
+The Desktop app is built using Electron and Vite.
+
+### 1. Build the App
+```bash
+# Go to desktop app directory
+cd desktop-app
+
+# Install dependencies (if first time)
+npm install
+
+# Build the .app package
+npm run package
+```
+*Output will be in `desktop-app/out/`.*
+
+### 2. Install & Fix Signature (Important)
+If you manually copy the app to `/Applications`, macOS will quarantine it. You must clear the quarantine and re-sign it locally.
+
+```bash
+# 1. Replace old app
+rm -rf /Applications/Leo.app
+cp -R desktop-app/out/Leo-darwin-arm64/Leo.app /Applications/
+
+# 2. Clear Quarantine (Fixes "Damaged" or "Crashed" errors)
+xattr -cr /Applications/Leo.app
+
+# 3. Ad-hoc Sign (Fixes "Code Signature Invalid" crash)
+codesign --force --deep --sign - /Applications/Leo.app
+```
+
+### 3. Permissions (Fixes "Shortcuts Not Working")
+If keyboard shortcuts (Cmd+Option+C) stop working after an update:
+1. Open **System Settings > Privacy & Security > Accessibility**.
+2. **Remove** Leo from the list (using the `-` button). *Simply toggling it off/on is not enough.*
+3. Add Leo back (`+` button -> Select from `/Applications`).
+4. Ensure toggle is **ON**.

@@ -6,8 +6,13 @@
     "permissions": [
         "activeTab",
         "scripting",
-        "clipboardRead"
+        "clipboardRead",
+        "storage"
     ],
+    "options_ui": {
+        "page": "options.html",
+        "open_in_tab": false
+    },
     "host_permissions": [
         "http://localhost:3000/*",
         "https://leo-brain.vercel.app/*"
@@ -34,6 +39,13 @@
                 "mac": "Command+Shift+Y"
             },
             "description": "Recall from Leo"
+        },
+        "capture_visual": {
+            "suggested_key": {
+                "default": "Ctrl+Shift+S",
+                "mac": "Command+Shift+S"
+            },
+            "description": "Visual Capture (OCR)"
         }
     },
     "action": {

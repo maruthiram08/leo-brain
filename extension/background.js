@@ -1,5 +1,15 @@
 const API_URL = 'https://leo-brain.vercel.app';
-const AUTH_TOKEN = 'LeoExt2026SecureToken'; // Matches .env.local
+const DEFAULT_TOKEN = 'LeoExt2026SecureToken';
+
+const getAuthToken = () => new Promise(resolve => {
+    try {
+        chrome.storage.sync.get('authToken', items => {
+            resolve(items && items.authToken ? items.authToken : DEFAULT_TOKEN);
+        });
+    } catch (e) {
+        resolve(DEFAULT_TOKEN);
+    }
+});
 
 // Keyboard shortcuts
 chrome.commands.onCommand.addListener(async (command) => {
@@ -10,14 +20,94 @@ chrome.commands.onCommand.addListener(async (command) => {
         await handleCapture(tab);
     } else if (command === 'trigger_recall') {
         await handleRecall(tab);
+    } else if (command === 'capture_visual') {
+        await handleVisualCapture(tab);
     }
 });
 
 // Icon click = Trigger Recall
 chrome.action.onClicked.addListener(async (tab) => {
     if (!tab?.id) return;
+    await handleVisualCapture(tab); // Make Icon click trigger Visual Capture for now? Or Recall? Leave Recall.
     await handleRecall(tab);
 });
+
+// ========== VISUAL CAPTURE (Cmd+Shift+S) ==========
+async function handleVisualCapture(tab) {
+    if (!tab?.windowId) return;
+
+    // Show "Analyzing..." feedback immediately
+    chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: showProcessingToast
+    }).catch(() => { });
+
+    // Capture visible tab as JPEG
+    chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 80 }, async (dataUrl) => {
+        if (chrome.runtime.lastError || !dataUrl) {
+            console.error('Screenshot failed:', chrome.runtime.lastError);
+            return;
+        }
+
+        try {
+            const payload = {
+                type: 'image',
+                content: dataUrl,
+                url: tab.url,
+                title: tab.title,
+                timestamp: Date.now(),
+                source: 'chrome_extension',
+                device: 'desktop',
+                sourceUrl: tab.url,
+                sourcePageTitle: tab.title
+            };
+
+            const response = await fetch(`${API_URL}/api/capture`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${await getAuthToken()}`
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (response.ok) {
+                chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    func: showToast
+                });
+            } else {
+                chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    func: showErrorToast
+                });
+            }
+        } catch (err) {
+            console.error('Visual capture error:', err);
+        }
+    });
+}
+
+function showProcessingToast() {
+    const toastId = 'leo-extension-toast';
+    const existing = document.getElementById(toastId);
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = toastId;
+    toast.innerHTML = '👁️ <b>Analyzing Visual...</b>';
+
+    Object.assign(toast.style, {
+        position: 'fixed', bottom: '24px', right: '24px',
+        backgroundColor: '#0f172a', color: '#fbbf24',
+        padding: '12px 24px', borderRadius: '12px',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        fontSize: '14px', fontWeight: '500',
+        zIndex: '2147483647', pointerEvents: 'none',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+    });
+    document.body.appendChild(toast);
+}
 
 // ========== CAPTURE (Cmd+Shift+E) ==========
 async function handleCapture(tab) {
@@ -55,7 +145,7 @@ async function handleCapture(tab) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${AUTH_TOKEN}`
+                'Authorization': `Bearer ${await getAuthToken()}`
             },
             body: JSON.stringify(finalPayload)
         });
@@ -234,7 +324,7 @@ async function handleRecall(tab) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${AUTH_TOKEN}`
+                'Authorization': `Bearer ${await getAuthToken()}`
             },
             body: JSON.stringify({
                 context: context.combinedContext,
