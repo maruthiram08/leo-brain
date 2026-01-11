@@ -740,6 +740,23 @@ app.on('ready', () => {
   ipcMain.on('leo:login', login);
   ipcMain.on('leo:hide', () => mainWindow?.hide());
   ipcMain.on('leo:quit', () => app.quit());
+
+  // === WIZARD IPC ===
+  ipcMain.handle('leo:check-permissions', () => {
+    // Check Accessibility (Trusted Client)
+    const isAccessibilityGranted = systemPreferences.isTrustedAccessibilityClient(false);
+    return { accessibility: isAccessibilityGranted };
+  });
+
+  ipcMain.handle('leo:check-auth', () => {
+    return !!store.get('authToken');
+  });
+
+  ipcMain.handle('leo:open-settings', (event, type) => {
+    if (type === 'accessibility') {
+      shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility');
+    }
+  });
 });
 
 app.on('will-quit', () => {

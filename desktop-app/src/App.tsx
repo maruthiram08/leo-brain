@@ -8,62 +8,138 @@ declare global {
             logout: () => void;
             login: () => void;
             hide: () => void;
-            quit: () => void; // Added quit to interface
+            quit: () => void;
             onConnectionStatus: (callback: (connected: boolean) => void) => void;
+            checkPermissions: () => Promise<{ accessibility: boolean }>;
+            checkAuth: () => Promise<boolean>;
+            openSettings: (type: string) => void;
         };
     }
 }
 
+type WizardStep = 'loading' | 'welcome' | 'permissions' | 'auth' | 'ready';
+
 const App = () => {
-    const [connected, setConnected] = useState(true);
+    const [step, setStep] = useState<WizardStep>('loading');
+    const [permissions, setPermissions] = useState({ accessibility: false });
+    const [connected, setConnected] = useState(false);
 
     useEffect(() => {
-        window.leo?.onConnectionStatus((status) => setConnected(status));
-    }, []);
+        // Init Check
+        checkStatus();
 
-    // Quit handler (need to ensure main.ts exposes this or we use window.close())
-    // The user prompt asked for "Quit" in footer. 
-    // If main.ts doesn't expose 'quit', we can use 'hide' or 'logout' or just close window.
-    // Looking at main.ts, there was no explicit 'leo:quit' IPC, but we can add or assume it exists.
-    // Wait, let's check main.ts exposure.
-    // Actually, standard window close might just hide it. The prompt says "Quit".
-    // I'll assume for now we use a simple close or add a quit handler if needed.
-    // Update: I will use window.close() for "Hide" and invoke 'leo:quit' for Quit if available, or just nothing.
-    // Actually, looking at main.ts earlier, there was `app.on('will-quit')`.
-    // I will add a `leo:quit` IPC to main.ts *if* it's not there, but for now let's build the UI assuming it works.
-    // The existing `window.leo` interface in `App.tsx` didn't have `quit`. I will add it to the types above.
+        // Listen for auth updates
+        window.leo?.onConnectionStatus((status) => {
+            setConnected(status);
+            if (status && step === 'auth') {
+                setStep('ready');
+            }
+        });
 
-    const handleQuit = () => {
-        // We need to send a message to main process to quit app completely
-        // Since I can't edit main.ts right now without a tool call, and I'm editing App.tsx,
-        // I'll try to use the existing `window.leo` if possible.
-        // Wait, the prompt says "Quit" is a requirement.
-        // I will implement the UI for it.
-        // If the IPC isn't there, it won't work, but I'll add the UI.
-        // Actually, I can use `window.close()` for now which usually just hides the window in specific configs,
-        // but for a "Quit" button we usually mean `app.quit()`.
-        // I'll assume we can use `window.leo.logout()` or similar for now if `quit` is missing, 
-        // but better to add `leo:quit` logic to main.ts later if needed.
-        // FOR NOW: I'll put a placeholder function. 
-        // ACTUALLY: The user asked to "Hide • Settings • Quit".
-        // "Hide" -> `window.leo.hide()`
-        // "Settings" -> Maybe just a placeholder or `openUrl`
-        // "Quit" -> `window.close()` (often equates to quit if no background).
-        // Let's stick to the layout first.
+        // Polling for permissions if on permissions step
+        const interval = setInterval(() => {
+            if (step === 'permissions') checkPermissions();
+        }, 2000);
+
+        return () => clearInterval(interval);
+    }, [step]);
+
+    const checkStatus = async () => {
+        const auth = await window.leo?.checkAuth();
+        const perms = await window.leo?.checkPermissions();
+
+        setConnected(auth);
+        setPermissions(perms);
+
+        if (!perms.accessibility) {
+            setStep('permissions');
+        } else if (!auth) {
+            setStep('auth');
+        } else {
+            setStep('ready');
+        }
     };
 
+    const checkPermissions = async () => {
+        const perms = await window.leo?.checkPermissions();
+        setPermissions(perms);
+        if (perms.accessibility) {
+            // Auto-advance
+            const auth = await window.leo?.checkAuth();
+            if (auth) setStep('ready');
+            else setStep('auth');
+        }
+    };
+
+    // --- STEPS ---
+
+    if (step === 'loading') {
+        return <div className="flex items-center justify-center h-screen bg-[#1e1e1e] text-[#a1a1aa] text-xs">Loading Leo...</div>;
+    }
+
+    if (step === 'permissions') {
+        return (
+            <div className="flex flex-col h-screen bg-[#1e1e1e] text-white p-6 justify-center text-center">
+                <div className="mb-4 text-4xl">🔐</div>
+                <h1 className="text-lg font-semibold mb-2">Enable Permissions</h1>
+                <p className="text-[#a1a1aa] text-xs mb-6 leading-relaxed">
+                    Leo needs <b>Accessibility</b> access to capture selected text.
+                </p>
+
+                <div className="bg-[#2a2a2a] rounded-lg p-4 mb-6 border border-[#3f3f46] text-left">
+                    <div className="flex items-center gap-3 mb-2">
+                        <div className={`w-2 h-2 rounded-full ${permissions.accessibility ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                        <span className="text-xs font-medium">Accessibility</span>
+                        {!permissions.accessibility && (
+                            <button
+                                onClick={() => window.leo.openSettings('accessibility')}
+                                className="ml-auto text-[10px] bg-blue-600 px-2 py-1 rounded hover:bg-blue-500"
+                            >
+                                Open Settings
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                <div className="mt-auto text-[10px] text-[#52525b]">
+                    Auto-detecting changes...
+                </div>
+            </div>
+        );
+    }
+
+    if (step === 'auth') {
+        return (
+            <div className="flex flex-col h-screen bg-[#1e1e1e] text-white p-6 justify-center text-center">
+                <div className="mb-4 text-4xl">👋</div>
+                <h1 className="text-lg font-semibold mb-2">Connect Account</h1>
+                <p className="text-[#a1a1aa] text-xs mb-6">
+                    Sign in to sync your memories.
+                </p>
+
+                <button
+                    onClick={() => window.leo.login()}
+                    className="w-full py-2 bg-white text-black text-sm font-semibold rounded hover:bg-gray-200 transition-colors"
+                >
+                    Connect via Browser
+                </button>
+            </div>
+        );
+    }
+
+    // --- MAIN APP (Ready) ---
     return (
         <div className="flex flex-col h-screen bg-[#1e1e1e] text-[#e0e0e0] font-sans selection:bg-[#3d3d3d] overflow-hidden">
 
-            {/* 1. HEADER */}
+            {/* HEADER */}
             <div className="px-5 pt-5 flex items-center mb-6">
                 <div className={`w-2 h-2 rounded-full mr-3 ${connected ? 'bg-[#4ade80]' : 'bg-[#facc15]'}`}></div>
                 <span className="text-[13px] font-medium text-[#a1a1aa] tracking-wide">
-                    {connected ? 'Leo is running' : 'Leo is disconnected'}
+                    {connected ? 'Leo is ready' : 'Disconnected'}
                 </span>
             </div>
 
-            {/* 2. PRIMARY ACTION */}
+            {/* PRIMARY ACTION */}
             <div className="px-5 mb-2">
                 <button
                     onClick={() => window.leo?.capture()}
@@ -78,7 +154,7 @@ const App = () => {
                 </button>
             </div>
 
-            {/* 3. SECONDARY ACTION */}
+            {/* SECONDARY ACTION */}
             <div className="px-5 mb-auto">
                 <button
                     onClick={() => window.leo?.recall()}
@@ -93,63 +169,14 @@ const App = () => {
                 </button>
             </div>
 
-            {/* 4. FOOTER CONTROLS */}
+            {/* FOOTER */}
             <div className="px-5 pb-5 mt-4 flex items-center text-[11px] text-[#52525b] gap-2 select-none">
-                <button
-                    onClick={() => window.leo?.hide()}
-                    className="hover:text-[#a1a1aa] transition-colors cursor-pointer"
-                >
-                    Hide
-                </button>
+                <button onClick={() => window.leo?.hide()} className="hover:text-[#a1a1aa] cursor-pointer">Hide</button>
                 <span>•</span>
-                <button
-                    className="hover:text-[#a1a1aa] transition-colors cursor-pointer"
-                    onClick={() => { /* Open Settings Placeholder */ }}
-                >
-                    Settings
-                </button>
+                <button onClick={() => window.leo?.logout()} className="hover:text-[#a1a1aa] cursor-pointer">Log out</button>
                 <span>•</span>
-                {connected ? (
-                    <button
-                        onClick={() => window.leo?.logout()}
-                        className="hover:text-[#a1a1aa] transition-colors cursor-pointer"
-                    >
-                        Log out
-                    </button>
-                ) : (
-                    <button
-                        onClick={() => window.leo?.login()}
-                        className="hover:text-[#4ade80] transition-colors cursor-pointer"
-                    >
-                        Log in
-                    </button>
-                )}
-                <span>•</span>
-                <button
-                    onClick={() => {
-                        window.leo?.quit();
-                    }}
-                    className="hover:text-[#a1a1aa] transition-colors cursor-pointer"
-                >
-                    Quit
-                </button>
+                <button onClick={() => window.leo?.quit()} className="hover:text-[#a1a1aa] cursor-pointer">Quit</button>
             </div>
-
-            {/* Auth State Handling (Overlay or distinct state) */}
-            {!connected && (
-                <div className="absolute inset-0 bg-[#1e1e1e]/90 flex items-center justify-center p-6 text-center backdrop-blur-sm">
-                    <div>
-                        <div className="text-sm text-[#a1a1aa] mb-3">Leo needs to connect</div>
-                        <button
-                            onClick={() => window.leo?.login()}
-                            className="px-4 py-2 bg-[#e0e0e0] text-black text-xs font-semibold rounded hover:bg-white transition-colors"
-                        >
-                            Connect Account
-                        </button>
-                    </div>
-                </div>
-            )}
-
         </div>
     );
 };

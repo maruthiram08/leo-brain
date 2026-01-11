@@ -9,5 +9,9 @@ contextBridge.exposeInMainWorld('leo', {
     quit: () => ipcRenderer.send('leo:quit'),
     onConnectionStatus: (callback: (connected: boolean) => void) => {
         ipcRenderer.on('leo:connection-status', (_event, connected) => callback(connected));
-    }
+    },
+    // Wizard Methods
+    checkPermissions: () => ipcRenderer.invoke('leo:check-permissions'),
+    checkAuth: () => ipcRenderer.invoke('leo:check-auth'),
+    openSettings: (type: string) => ipcRenderer.invoke('leo:open-settings', type)
 });
